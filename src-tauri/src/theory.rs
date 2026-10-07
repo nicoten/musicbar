@@ -400,6 +400,17 @@ impl Challenge {
         notes.into_iter().map(|n| spell(n, spelling[(n % 12) as usize].0)).collect()
     }
 
+    /// The answer as MIDI notes from the root in the C3 octave: chord tones low to high, or the
+    /// notes in the order they're played.
+    pub fn notes(&self) -> Vec<u8> {
+        let root = 48 + self.root;
+        match self.kind {
+            Kind::Chord(c) => c.intervals().iter().map(|i| root + i).collect(),
+            Kind::Interval(i) => vec![root, root + i.semitones()],
+            Kind::Scale(s) => s.steps().iter().scan(root, |n, step| Some(std::mem::replace(n, *n + step))).chain([root + 12]).collect(),
+        }
+    }
+
     /// `held` = currently pressed notes; `history` = recent note-ons, oldest first.
     pub fn is_satisfied(&self, held: &BTreeSet<u8>, history: &[u8]) -> bool {
         match self.kind {
@@ -478,6 +489,14 @@ mod tests {
     fn melodic_minor_ascending() {
         let c = Challenge { root: 0, kind: Kind::Scale(ScaleType::MelodicMinor) };
         assert!(c.is_satisfied(&set(&[]), &[60, 62, 63, 65, 67, 69, 71, 72]));
+    }
+
+    #[test]
+    fn notes_spell_out_the_answer() {
+        let c = |root, kind| Challenge { root, kind }.notes();
+        assert_eq!(c(2, Kind::Chord(ChordType::Minor7)), [50, 53, 57, 60]);
+        assert_eq!(c(9, Kind::Interval(Interval::MinorThird)), [57, 60]);
+        assert_eq!(c(0, Kind::Scale(ScaleType::Major)), [48, 50, 52, 53, 55, 57, 59, 60]);
     }
 
     #[test]

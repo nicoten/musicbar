@@ -4,6 +4,7 @@ mod engine;
 mod midi;
 mod pitch;
 mod settings;
+mod synth;
 mod theory;
 mod updates;
 
@@ -213,7 +214,9 @@ fn on_note(app: &AppHandle, ev: NoteEvent) {
         let mut e = app.state::<Shared>().inner().engine();
         match ev {
             NoteEvent::On(n) => {
-                e.note_on(n, Instant::now());
+                if e.note_on(n, Instant::now()) {
+                    synth::answer(&e.challenge);
+                }
             }
             NoteEvent::Off(n) => e.note_off(n, Instant::now()),
         }
@@ -223,9 +226,14 @@ fn on_note(app: &AppHandle, ev: NoteEvent) {
 
 fn on_audio(app: &AppHandle, ev: AudioEvent) {
     match ev {
+        // Don't take what MusicBar itself is playing (heard through the mic) for you playing.
+        AudioEvent::Note(NoteEvent::On(_)) | AudioEvent::Chord(_) if synth::sounding() => {}
         AudioEvent::Note(n) => on_note(app, n),
         AudioEvent::Chord(pcs) => {
-            if app.state::<Shared>().inner().engine().chord_heard(&pcs, Instant::now()) {
+            let mut e = app.state::<Shared>().inner().engine();
+            if e.chord_heard(&pcs, Instant::now()) {
+                synth::answer(&e.challenge);
+                drop(e);
                 publish(app);
             }
         }
@@ -316,7 +324,16 @@ fn skip(app: AppHandle) -> Snapshot {
 
 #[tauri::command]
 fn fret_click(app: AppHandle, note: u8) {
-    app.state::<Shared>().inner().engine().click(note, Instant::now());
+    {
+        let mut e = app.state::<Shared>().inner().engine();
+        // Clicking a held chord tone again lets go of it, silently.
+        if !e.is_clicked(note) {
+            synth::pluck(note);
+        }
+        if e.click(note, Instant::now()) {
+            synth::answer(&e.challenge);
+        }
+    }
     publish(&app);
 }
 

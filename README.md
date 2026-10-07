@@ -9,6 +9,9 @@ input). Play the challenge before the timer runs out, or a full-screen alarm tak
 - No instrument handy? Click the menu bar item and click the notes on a guitar neck: in order
   for intervals and scales, or click each chord tone to hold it (click again to let go). Settings can
   also put the fretboard on the alarm screen.
+- Clicked frets sound like a plucked string, and every solved challenge is played back: chords
+  together, intervals one note then the other, scales up the octave. While that rings, audio input
+  ignores new notes so the mic doesn't hear MusicBar as you.
 - The last note you played shows next to the challenge in the menu bar, e.g. `♪ Dm7 · 4:32 │ A2`.
 - Beeps every second for the last 10 seconds.
 - Auto-pauses during calls: any camera on, or another app using the mic while Zoom/Teams/Webex/FaceTime is running.

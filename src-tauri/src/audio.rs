@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-fn name(device: &Device) -> Option<String> {
+pub fn name(device: &Device) -> Option<String> {
     device.description().ok().map(|d| d.name().to_string())
 }
 

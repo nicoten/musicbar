@@ -189,6 +189,11 @@ impl Engine {
         self.note_on(note, now)
     }
 
+    /// True if `note` is held down by a click, so clicking it again lets go.
+    pub fn is_clicked(&self, note: u8) -> bool {
+        self.clicked.contains(&note)
+    }
+
     /// Lets go of every note held by clicking.
     pub fn clear_clicks(&mut self) {
         for note in std::mem::take(&mut self.clicked) {
