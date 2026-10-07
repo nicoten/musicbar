@@ -1,0 +1,73 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MusicBar",
+  "version": "0.1.0",
+  "identifier": "com.nicotejera.musicbar",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "panel",
+        "url": "panel.html",
+        "title": "MusicBar",
+        "width": 300,
+        "height": 372,
+        "visible": false,
+        "decorations": false,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "contentProtected": true
+      },
+      {
+        "label": "settings",
+        "url": "settings.html",
+        "title": "MusicBar settings",
+        "width": 480,
+        "height": 780,
+        "visible": false
+      },
+      {
+        "label": "alarm",
+        "url": "alarm.html",
+        "title": "Play it!",
+        "visible": false,
+        "decorations": false,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visibleOnAllWorkspaces": true,
+        "contentProtected": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "entitlements": "Entitlements.plist"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERCNkIxQUQ3RTdDMUI3QjQKUldTMHQ4SG4xeHByMjh1cjdOWmlORWsxZXNFS2RDWkpuTnY2RmFZaWdvd3F1Y29aUmMrYUZoSzcK",
+      "endpoints": [
+        "https://github.com/nicoten/musicbar/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

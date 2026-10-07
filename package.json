@@ -1,0 +1,14 @@
+{
+  "name": "musicbar",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "build": "env -u TAURI_SIGNING_PRIVATE_KEY_PATH TAURI_SIGNING_PRIVATE_KEY=\"$(cat ~/.tauri/musicbar.key)\" TAURI_SIGNING_PRIVATE_KEY_PASSWORD= tauri build",
+    "release": "scripts/release.sh"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <title>MusicBar settings</title>
+    <script type="module" src="settings.js" defer></script>
+  </head>
+  <body>
+    <form class="settings" id="form">
+      <h1>What should I quiz you on?</h1>
+      <fieldset id="chords"></fieldset>
+      <fieldset id="intervals"></fieldset>
+      <fieldset id="scales"></fieldset>
+      <fieldset>
+        <legend>General</legend>
+        <label class="field">Time per challenge (minutes) <input type="number" id="minutes" min="1" max="240" required /></label>
+        <label class="field">MIDI input <select id="midi"></select></label>
+        <label class="field">Listen to audio (guitar or mic) <input type="checkbox" id="audio_enabled" /></label>
+        <label class="field">Audio input <select id="audio_device"></select></label>
+        <label class="field">Sounds (last-10-seconds countdown + alarm) <input type="checkbox" id="sound" /></label>
+        <label class="field">Pause during calls (camera on, or mic in use by a meeting app) <input type="checkbox" id="pause_in_calls" /></label>
+        <label class="field">Launch at login <input type="checkbox" id="launch_at_login" /></label>
+      </fieldset>
+      <div class="footer">
+        <span class="status" id="status"></span>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </body>
+</html>

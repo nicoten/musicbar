@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <title>MusicBar</title>
+    <script type="module" src="panel.js" defer></script>
+  </head>
+  <body>
+    <div class="panel" id="panel">
+      <div class="eyebrow" id="category"></div>
+      <div class="challenge" id="short"></div>
+      <div class="long" id="long"></div>
+      <div class="timer" id="timer"></div>
+      <div class="bar"><div id="progress"></div></div>
+      <div class="held" id="held"></div>
+      <div class="row">
+        <button id="pause" class="primary">Pause</button>
+        <button id="skip">Skip</button>
+      </div>
+      <div class="row">
+        <button id="settings">Settings…</button>
+        <button id="quit">Quit</button>
+      </div>
+      <div class="update">
+        <span id="update-status"></span>
+        <button id="check-updates" class="link">Check for updates</button>
+      </div>
+    </div>
+  </body>
+</html>
