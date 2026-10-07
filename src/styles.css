@@ -33,9 +33,11 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .panel.overdue .timer { color: var(--alarm); }
 .panel.overdue .bar > div { background: var(--alarm); }
 .held { font-size: 12px; color: var(--muted); min-height: 16px; margin-top: 4px; }
-.row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: auto; }
-.row + .row { margin-top: 0; }
-.update { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); }
+.panel > * { flex-shrink: 0; }
+.panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.panel-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex: none; }
+.panel #board { margin-top: 4px; }
+.update { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); }
 .update span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 button.link { border: none; background: none; padding: 2px 0; font-size: 11px; color: var(--accent); white-space: nowrap; }
 button.link:disabled { color: var(--muted); }
@@ -68,3 +70,46 @@ body.alarm-body { background: var(--alarm); color: #fff; overflow: hidden; }
   25% { transform: translateX(-8px) rotate(-1deg); }
   75% { transform: translateX(8px) rotate(1deg); }
 }
+
+/* Fretboard */
+.fretboard-wrap { --wood: #6b4a2f; --string: #d8c9a8; --dot: var(--accent); width: 100%; }
+.fretboard {
+  display: grid; grid-template-columns: 34px repeat(15, 1fr); grid-template-rows: repeat(6, 26px);
+  background: var(--wood); border-radius: 6px; overflow: hidden;
+}
+.fret {
+  position: relative; border: none; border-right: 2px solid #c9c2b4; border-radius: 0; padding: 0; background: none; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+.fret::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--string); }
+.fret.open { background: rgba(0, 0, 0, .25); border-right: 4px solid #eee8da; }
+.fret span {
+  position: relative; width: 20px; height: 20px; line-height: 20px; border-radius: 50%; font-size: 10px; font-weight: 600;
+  opacity: 0; transition: opacity .1s;
+}
+.fret:hover { border-color: #c9c2b4; background: rgba(255, 255, 255, .08); }
+.show-names .fret span { opacity: .55; }
+.fret.on span { opacity: 1; background: var(--dot); color: #fff; box-shadow: 0 0 0 2px #fff; }
+.inlay { grid-row: 3 / 5; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.inlay::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: #e9dcc0; opacity: .55; }
+.fret-tools { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.fret-tools span:first-child { margin-right: auto; }
+.fret-trail { font-variant-numeric: tabular-nums; }
+.fret.flash span { animation: pluck .35s ease-out; }
+@keyframes pluck { from { opacity: 1; background: var(--dot); color: #fff; } }
+.fret-tools label { display: flex; align-items: center; gap: 4px; }
+.fret-tools button { padding: 3px 10px; font-size: 12px; }
+.staff { width: 100%; max-width: 560px; display: block; margin: 4px auto 0; overflow: visible; }
+.staff-line { stroke: var(--muted); stroke-width: 1; }
+.note-head { fill: var(--fg); }
+.clef { font-size: 62px; fill: var(--fg); font-family: "Apple Symbols", "Bravura", serif; }
+.clef-8 { font-size: 9px; fill: var(--fg); }
+.accidental { font-size: 15px; fill: var(--fg); text-anchor: end; font-family: "Apple Symbols", serif; }
+.staff .new { animation: note-in .3s ease-out; transform-box: fill-box; transform-origin: center; }
+@keyframes note-in { from { opacity: 0; transform: translateY(-6px); } }
+.alarm .staff-line { stroke: rgba(255, 255, 255, .8); }
+.alarm .note-head, .alarm .clef, .alarm .clef-8, .alarm .accidental { fill: #fff; }
+.alarm #board { width: min(92vw, 1100px); background: rgba(0, 0, 0, .35); border-radius: 10px; padding: 14px; animation: none; }
+.alarm .fretboard { grid-template-rows: repeat(6, 36px); }
+.alarm .fret-tools { color: #fff; }
+[hidden] { display: none !important; }

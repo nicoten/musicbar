@@ -1,5 +1,5 @@
 use crate::settings::Settings;
-use crate::theory::{Challenge, Kind};
+use crate::theory::{Challenge, Kind, Spelled};
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
@@ -18,6 +18,8 @@ pub struct Engine {
     in_call: bool,
     overdue: bool,
     held: BTreeSet<u8>,
+    /// Notes held down by clicking the on-screen fretboard (chord challenges only).
+    clicked: BTreeSet<u8>,
     history: Vec<u8>,
     last_note: Option<u8>,
     /// When `last_note` stopped sounding; `None` while it's still held.
@@ -35,6 +37,7 @@ impl Engine {
             in_call: false,
             overdue: false,
             held: BTreeSet::new(),
+            clicked: BTreeSet::new(),
             history: Vec::new(),
             last_note: None,
             last_note_off: None,
@@ -46,6 +49,7 @@ impl Engine {
         self.challenge = Challenge::random(&self.settings.kinds(), Some(&self.challenge));
         self.overdue = false;
         self.history.clear();
+        self.clear_clicks();
         let full = self.settings.duration();
         match self.paused_remaining {
             Some(_) => self.paused_remaining = Some(full),
@@ -71,6 +75,11 @@ impl Engine {
 
     pub fn overdue(&self) -> bool {
         self.overdue
+    }
+
+    /// The notes played so far that are correct for the current challenge.
+    pub fn progress(&self) -> Vec<Spelled> {
+        self.challenge.progress(&self.held, &self.history)
     }
 
     pub fn held(&self) -> &BTreeSet<u8> {
@@ -136,6 +145,29 @@ impl Engine {
         self.held.remove(&note);
         if self.last_note == Some(note) {
             self.last_note_off = Some(now);
+        }
+    }
+
+    /// A note clicked on the on-screen fretboard: plucked for intervals and scales, toggled held for
+    /// chords. Returns true if it solved the challenge.
+    pub fn click(&mut self, note: u8, now: Instant) -> bool {
+        if !matches!(self.challenge.kind, Kind::Chord(_)) {
+            let solved = self.note_on(note, now);
+            self.note_off(note, now);
+            return solved;
+        }
+        if self.clicked.remove(&note) {
+            self.note_off(note, now);
+            return false;
+        }
+        self.clicked.insert(note);
+        self.note_on(note, now)
+    }
+
+    /// Lets go of every note held by clicking.
+    pub fn clear_clicks(&mut self) {
+        for note in std::mem::take(&mut self.clicked) {
+            self.held.remove(&note);
         }
     }
 
@@ -243,6 +275,33 @@ mod tests {
         assert!(!e.chord_heard(&minor, t0));
         let major: BTreeSet<u8> = [root, (root + 4) % 12, (root + 7) % 12].into();
         assert!(e.chord_heard(&major, t0));
+    }
+
+    #[test]
+    fn clicks_toggle_chord_notes_and_release_on_solve() {
+        let t0 = Instant::now();
+        let mut e = engine(t0);
+        let root = 48 + e.challenge.root;
+        assert!(!e.click(root, t0));
+        assert!(!e.click(root + 3, t0));
+        assert!(!e.click(root + 3, t0), "clicking again lets go");
+        assert!(!e.click(root + 7, t0));
+        assert!(e.click(root + 16, t0), "major 3rd an octave up");
+        assert!(e.held().is_empty(), "clicked notes released for the next challenge");
+    }
+
+    #[test]
+    fn clicks_pluck_scale_notes() {
+        let t0 = Instant::now();
+        let settings = Settings { chords: vec![], intervals: vec![], scales: vec![crate::theory::ScaleType::Major], ..Settings::default() };
+        let mut e = Engine::new(settings, t0);
+        let mut note = 48 + e.challenge.root;
+        assert!(!e.click(note, t0));
+        for (i, step) in [2, 2, 1, 2, 2, 2, 1].into_iter().enumerate() {
+            note += step;
+            assert_eq!(e.click(note, t0), i == 6);
+            assert!(e.held().is_empty());
+        }
     }
 
     #[test]

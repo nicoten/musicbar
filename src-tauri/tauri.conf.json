@@ -13,8 +13,8 @@
         "label": "panel",
         "url": "panel.html",
         "title": "MusicBar",
-        "width": 300,
-        "height": 372,
+        "width": 760,
+        "height": 540,
         "visible": false,
         "decorations": false,
         "resizable": false,
@@ -27,7 +27,7 @@
         "url": "settings.html",
         "title": "MusicBar settings",
         "width": 480,
-        "height": 780,
+        "height": 810,
         "visible": false
       },
       {

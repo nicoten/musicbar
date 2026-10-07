@@ -8,20 +8,23 @@
   </head>
   <body>
     <div class="panel" id="panel">
-      <div class="eyebrow" id="category"></div>
-      <div class="challenge" id="short"></div>
-      <div class="long" id="long"></div>
+      <div class="panel-head">
+        <div>
+          <div class="eyebrow" id="category"></div>
+          <div class="challenge" id="short"></div>
+          <div class="long" id="long"></div>
+        </div>
+        <div class="panel-actions">
+          <button id="pause" class="primary">Pause</button>
+          <button id="skip">Skip</button>
+          <button id="settings">Settings…</button>
+          <button id="quit">Quit</button>
+        </div>
+      </div>
       <div class="timer" id="timer"></div>
       <div class="bar"><div id="progress"></div></div>
       <div class="held" id="held"></div>
-      <div class="row">
-        <button id="pause" class="primary">Pause</button>
-        <button id="skip">Skip</button>
-      </div>
-      <div class="row">
-        <button id="settings">Settings…</button>
-        <button id="quit">Quit</button>
-      </div>
+      <div id="board"></div>
       <div class="update">
         <span id="update-status"></span>
         <button id="check-updates" class="link">Check for updates</button>

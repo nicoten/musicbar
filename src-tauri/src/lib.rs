@@ -53,6 +53,13 @@ struct Snapshot {
     in_call: bool,
     overdue: bool,
     held: Vec<String>,
+    /// Same as `held`, as MIDI note numbers.
+    held_notes: Vec<u8>,
+    fretboard_on_alarm: bool,
+    /// How to name each pitch class (C = 0) for this challenge, e.g. D♯ rather than E♭ in B major.
+    names: Vec<theory::PitchName>,
+    /// The notes played correctly so far, for the staff.
+    progress: Vec<theory::Spelled>,
     /// Last note played on any input, e.g. "A2".
     note: Option<String>,
 }
@@ -68,8 +75,12 @@ fn snapshot(e: &Engine, now: Instant) -> Snapshot {
         user_paused: e.user_paused(),
         in_call: e.in_call(),
         overdue: e.overdue(),
-        held: e.held().iter().map(|&n| theory::note_name(n)).collect(),
-        note: e.last_note(now).map(theory::note_name),
+        held: e.held().iter().map(|&n| e.challenge.note_name(n)).collect(),
+        held_notes: e.held().iter().copied().collect(),
+        fretboard_on_alarm: e.settings.fretboard_on_alarm,
+        progress: e.progress(),
+        note: e.last_note(now).map(|n| e.challenge.note_name(n)),
+        names: e.challenge.pitch_names(),
     }
 }
 
@@ -243,8 +254,13 @@ fn toggle_panel(tray: &TrayIcon, rect: tauri::Rect) {
     let pos = rect.position.to_physical::<f64>(scale);
     let size = rect.size.to_physical::<f64>(scale);
     let width = panel.outer_size().map(|s| s.width as f64).unwrap_or(300.0 * scale);
-    let x = pos.x + size.width / 2.0 - width / 2.0;
-    let _ = panel.set_position(PhysicalPosition::new(x.max(0.0), pos.y + size.height));
+    let mut x = pos.x + size.width / 2.0 - width / 2.0;
+    // Keep the (wide) panel on the screen the tray icon is on.
+    if let Ok(Some(m)) = panel.monitor_from_point(pos.x, pos.y) {
+        let right = m.position().x as f64 + m.size().width as f64;
+        x = x.min(right - width).max(m.position().x as f64);
+    }
+    let _ = panel.set_position(PhysicalPosition::new(x, pos.y + size.height));
     let _ = panel.show();
     let _ = panel.set_focus();
 }
@@ -294,6 +310,20 @@ fn skip(app: AppHandle) -> Snapshot {
         }
     }
     publish(&app)
+}
+
+#[tauri::command]
+fn fret_click(app: AppHandle, note: u8) {
+    if app.state::<Shared>().inner().engine().click(note, Instant::now()) {
+        hide_alarm(&app);
+    }
+    publish(&app);
+}
+
+#[tauri::command]
+fn fret_clear(app: AppHandle) {
+    app.state::<Shared>().inner().engine().clear_clicks();
+    publish(&app);
 }
 
 #[tauri::command]
@@ -440,6 +470,8 @@ pub fn run() {
             get_update_info,
             check_for_updates,
             open_settings,
+            fret_click,
+            fret_clear,
             quit
         ])
         .run(tauri::generate_context!())

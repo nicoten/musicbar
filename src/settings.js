@@ -39,6 +39,7 @@ async function load() {
   $("sound").checked = settings.sound;
   $("pause_in_calls").checked = settings.pause_in_calls;
   $("launch_at_login").checked = settings.launch_at_login;
+  $("fretboard_on_alarm").checked = settings.fretboard_on_alarm;
   const midi = $("midi");
   midi.innerHTML = `<option value="">All inputs</option>`;
   const names = new Set(ports);
@@ -77,6 +78,7 @@ $("form").onsubmit = async (e) => {
     sound: $("sound").checked,
     pause_in_calls: $("pause_in_calls").checked,
     launch_at_login: $("launch_at_login").checked,
+    fretboard_on_alarm: $("fretboard_on_alarm").checked,
   };
   try {
     await invoke("save_settings", { settings });

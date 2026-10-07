@@ -19,6 +19,8 @@ pub struct Settings {
     pub sound: bool,
     pub pause_in_calls: bool,
     pub launch_at_login: bool,
+    /// Show the clickable fretboard on the alarm screen.
+    pub fretboard_on_alarm: bool,
 }
 
 impl Default for Settings {
@@ -34,6 +36,7 @@ impl Default for Settings {
             sound: true,
             pause_in_calls: true,
             launch_at_login: true,
+            fretboard_on_alarm: false,
         }
     }
 }

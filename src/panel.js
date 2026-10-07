@@ -1,7 +1,9 @@
 import { invoke, fmt, onState } from "./common.js";
+import { mountFretboard } from "./fretboard.js";
 const { listen } = window.__TAURI__.event;
 
 const $ = (id) => document.getElementById(id);
+const renderBoard = mountFretboard($("board"));
 
 onState((s) => {
   $("panel").classList.toggle("overdue", s.overdue);
@@ -19,6 +21,7 @@ onState((s) => {
   $("held").textContent = s.held.length ? `Playing: ${s.held.join(" ")}` : "";
   $("pause").textContent = s.user_paused ? "Resume" : "Pause";
   $("skip").disabled = s.overdue;
+  renderBoard(s);
 });
 
 $("pause").onclick = () => invoke("toggle_pause");
