@@ -15,6 +15,8 @@ const TOP_LINE = 38; // F5
 const LOWEST = 23;
 const HIGHEST = 46;
 const y = (step) => 8 + (HIGHEST - step) * STEP;
+const NATURAL_PCS = [0, 2, 4, 5, 7, 9, 11];
+const midi = (n) => (n.octave + 1) * 12 + NATURAL_PCS[n.letter] + n.alter;
 
 /** Builds a clickable fretboard in `el`; returns a function that renders the app state onto it. */
 export function mountFretboard(el) {
@@ -22,6 +24,8 @@ export function mountFretboard(el) {
   /** Held notes -> the button they were clicked on, so only that spot lights up. */
   const picked = new Map();
   let trail = [];
+  /** Buttons clicked during this challenge, oldest first. */
+  let clicks = [];
   let challenge = null;
   /** Pitch-class names for the current challenge, from the app state (D♯ in B major, E♭ in A♭). */
   let names = [];
@@ -44,6 +48,7 @@ export function mountFretboard(el) {
       b.onclick = () => {
         picked.set(note, b);
         trail = [...trail.slice(-7), noteName(note)];
+        clicks = [...clicks.slice(-15), b];
         b.classList.remove("flash");
         void b.offsetWidth;
         b.classList.add("flash");
@@ -92,13 +97,18 @@ export function mountFretboard(el) {
     if (s.short !== challenge) {
       challenge = s.short;
       trail = [];
+      clicks = [];
     }
     names = s.names;
     const held = new Set(s.held_notes);
     for (const note of picked.keys()) if (!held.has(note)) picked.delete(note);
+    // Once solved, keep the clicked run (scale or interval) lit where it was played.
+    const answer = s.solved && s.category !== "Chord" ? s.progress.map(midi) : [];
+    const run = clicks.slice(-answer.length);
+    const shown = answer.length && run.every((b, i) => Number(b.dataset.note) === answer[i]) ? new Set(run) : new Set();
     for (const b of board.querySelectorAll(".fret")) {
       const note = Number(b.dataset.note);
-      b.classList.toggle("on", held.has(note) && (picked.get(note) ?? b) === b);
+      b.classList.toggle("on", (held.has(note) && (picked.get(note) ?? b) === b) || shown.has(b));
       b.firstChild.textContent = names[note % 12].name;
     }
     played.textContent = trail.length && s.category !== "Scale" ? `Clicked: ${trail.join(" ")}` : "";

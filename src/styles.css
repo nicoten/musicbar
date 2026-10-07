@@ -6,11 +6,12 @@
   --line: #d9d7d1;
   --accent: #3a5bd9;
   --alarm: #d7263d;
+  --good: #1f9d55;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #1c1c1e; --fg: #f2f2f7; --muted: #98989f; --card: #2c2c2e; --line: #3a3a3c; --accent: #7d95ff; }
+  :root { --bg: #1c1c1e; --fg: #f2f2f7; --muted: #98989f; --card: #2c2c2e; --line: #3a3a3c; --accent: #7d95ff; --good: #34c97a; }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); user-select: none; -webkit-user-select: none; }
@@ -32,6 +33,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .bar > div { height: 100%; background: var(--accent); transition: width .25s linear; }
 .panel.overdue .timer { color: var(--alarm); }
 .panel.overdue .bar > div { background: var(--alarm); }
+.panel.solved .timer { color: var(--good); }
+.panel.solved .bar > div { background: var(--good); }
 .held { font-size: 12px; color: var(--muted); min-height: 16px; margin-top: 4px; }
 .panel > * { flex-shrink: 0; }
 .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -64,6 +67,9 @@ body.alarm-body { background: var(--alarm); color: #fff; overflow: hidden; }
 .alarm .challenge { font-size: min(22vw, 220px); animation: shake .5s ease-in-out infinite; }
 .alarm .long { color: #fff; font-size: 26px; opacity: .9; }
 .alarm .held { color: #fff; font-size: 18px; opacity: .8; }
+body.alarm-body.solved { background: var(--good); }
+.solved .alarm, .solved .alarm .challenge { animation: none; }
+.solved .alarm .eyebrow { font-size: 34px; font-weight: 700; opacity: 1; }
 @keyframes flash { 50% { background: #8f0f22; } }
 @keyframes shake {
   0%, 100% { transform: translateX(0) rotate(0); }

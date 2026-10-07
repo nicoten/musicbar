@@ -386,7 +386,15 @@ impl Challenge {
             Kind::Chord(c) => {
                 held.iter().copied().filter(|n| c.intervals().iter().any(|i| (self.root + i) % 12 == n % 12)).collect()
             }
-            Kind::Interval(_) => history.last().copied().filter(|n| n % 12 == self.root).into_iter().collect(),
+            Kind::Interval(i) => {
+                let fits = |lo: u8, hi: u8| lo % 12 == self.root && hi.checked_sub(lo) == Some(i.semitones());
+                match (history, held.len()) {
+                    ([.., a, b], _) if fits(*a, *b) => vec![*a, *b],
+                    (_, 2) if fits(*held.first().unwrap(), *held.last().unwrap()) => held.iter().copied().collect(),
+                    ([.., last], _) if last % 12 == self.root => vec![*last],
+                    _ => vec![],
+                }
+            }
         };
         let spelling = self.spelling();
         notes.into_iter().map(|n| spell(n, spelling[(n % 12) as usize].0)).collect()
@@ -492,6 +500,7 @@ mod tests {
         let m3 = Challenge { root: 2, kind: Kind::Interval(Interval::MinorThird) };
         assert_eq!(m3.progress(&BTreeSet::new(), &[50]).len(), 1);
         assert!(m3.progress(&BTreeSet::new(), &[50, 52]).is_empty(), "wrong second note");
+        assert_eq!(m3.progress(&BTreeSet::new(), &[50, 53]).iter().map(Spelled::name).collect::<Vec<_>>(), ["D3", "F3"]);
     }
 
     #[test]

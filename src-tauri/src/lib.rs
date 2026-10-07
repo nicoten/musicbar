@@ -58,6 +58,8 @@ struct Snapshot {
     fretboard_on_alarm: bool,
     /// How to name each pitch class (C = 0) for this challenge, e.g. D♯ rather than E♭ in B major.
     names: Vec<theory::PitchName>,
+    /// Just solved: shown for a moment before the next challenge.
+    solved: bool,
     /// The notes played correctly so far, for the staff.
     progress: Vec<theory::Spelled>,
     /// Last note played on any input, e.g. "A2".
@@ -79,6 +81,7 @@ fn snapshot(e: &Engine, now: Instant) -> Snapshot {
         held_notes: e.held().iter().copied().collect(),
         fretboard_on_alarm: e.settings.fretboard_on_alarm,
         progress: e.progress(),
+        solved: e.solved(),
         note: e.last_note(now).map(|n| e.challenge.note_name(n)),
         names: e.challenge.pitch_names(),
     }
@@ -158,6 +161,10 @@ fn spawn_ticker(app: AppHandle) {
                 publish(&app);
                 last_snap = Some(snap.clone());
             }
+            // A solved alarm stays up (congratulating) until the next challenge loads.
+            if !snap.overdue && !snap.solved && is_visible(&app, "alarm") {
+                hide_alarm(&app);
+            }
             let busy = is_visible(&app, "panel") || is_visible(&app, "settings");
             updates::restart_if_ready(&app, snap.overdue, busy);
             if !snap.overdue || snap.paused {
@@ -202,18 +209,14 @@ fn spawn_call_watcher(app: AppHandle) {
 }
 
 fn on_note(app: &AppHandle, ev: NoteEvent) {
-    let solved = {
+    {
         let mut e = app.state::<Shared>().inner().engine();
         match ev {
-            NoteEvent::On(n) => e.note_on(n, Instant::now()),
-            NoteEvent::Off(n) => {
-                e.note_off(n, Instant::now());
-                false
+            NoteEvent::On(n) => {
+                e.note_on(n, Instant::now());
             }
+            NoteEvent::Off(n) => e.note_off(n, Instant::now()),
         }
-    };
-    if solved {
-        hide_alarm(app);
     }
     publish(app);
 }
@@ -223,7 +226,6 @@ fn on_audio(app: &AppHandle, ev: AudioEvent) {
         AudioEvent::Note(n) => on_note(app, n),
         AudioEvent::Chord(pcs) => {
             if app.state::<Shared>().inner().engine().chord_heard(&pcs, Instant::now()) {
-                hide_alarm(app);
                 publish(app);
             }
         }
@@ -314,9 +316,7 @@ fn skip(app: AppHandle) -> Snapshot {
 
 #[tauri::command]
 fn fret_click(app: AppHandle, note: u8) {
-    if app.state::<Shared>().inner().engine().click(note, Instant::now()) {
-        hide_alarm(&app);
-    }
+    app.state::<Shared>().inner().engine().click(note, Instant::now());
     publish(&app);
 }
 

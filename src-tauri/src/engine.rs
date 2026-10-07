@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 const HISTORY_LEN: usize = 16;
 /// How long the last note stays in the menu bar after it stops.
 const NOTE_LINGER: Duration = Duration::from_secs(3);
+/// How long a solved challenge stays up, with what you played, before the next one loads.
+pub const CELEBRATE: Duration = Duration::from_secs(3);
 
 /// Challenge + countdown state machine. Time is passed in so it can be tested.
 pub struct Engine {
@@ -24,6 +26,8 @@ pub struct Engine {
     last_note: Option<u8>,
     /// When `last_note` stopped sounding; `None` while it's still held.
     last_note_off: Option<Instant>,
+    /// Set while celebrating a solved challenge: when it was solved and the notes that solved it.
+    solved: Option<(Instant, Vec<Spelled>)>,
 }
 
 impl Engine {
@@ -41,6 +45,7 @@ impl Engine {
             history: Vec::new(),
             last_note: None,
             last_note_off: None,
+            solved: None,
         }
     }
 
@@ -48,6 +53,7 @@ impl Engine {
     pub fn next(&mut self, now: Instant) {
         self.challenge = Challenge::random(&self.settings.kinds(), Some(&self.challenge));
         self.overdue = false;
+        self.solved = None;
         self.history.clear();
         self.clear_clicks();
         let full = self.settings.duration();
@@ -77,9 +83,17 @@ impl Engine {
         self.overdue
     }
 
-    /// The notes played so far that are correct for the current challenge.
+    /// The notes played so far that are correct for the current challenge (all of them once solved).
     pub fn progress(&self) -> Vec<Spelled> {
-        self.challenge.progress(&self.held, &self.history)
+        match &self.solved {
+            Some((_, notes)) => notes.clone(),
+            None => self.challenge.progress(&self.held, &self.history),
+        }
+    }
+
+    /// True for a moment after solving, before the next challenge loads.
+    pub fn solved(&self) -> bool {
+        self.solved.is_some()
     }
 
     pub fn held(&self) -> &BTreeSet<u8> {
@@ -116,8 +130,14 @@ impl Engine {
         }
     }
 
-    /// Returns true on the tick the timer runs out.
+    /// Returns true on the tick the timer runs out. Moves on once a solved challenge has been shown.
     pub fn tick(&mut self, now: Instant) -> bool {
+        if let Some((at, _)) = self.solved {
+            if now.saturating_duration_since(at) >= CELEBRATE {
+                self.next(now);
+            }
+            return false;
+        }
         if self.paused() || self.overdue || !self.remaining(now).is_zero() {
             return false;
         }
@@ -125,7 +145,7 @@ impl Engine {
         true
     }
 
-    /// Returns true if this note completed the challenge (a new one is already loaded).
+    /// Returns true if this note completed the challenge (the next one loads after `CELEBRATE`).
     pub fn note_on(&mut self, note: u8, now: Instant) -> bool {
         self.held.insert(note);
         self.last_note = Some(note);
@@ -134,11 +154,16 @@ impl Engine {
         if self.history.len() > HISTORY_LEN {
             self.history.remove(0);
         }
-        let solved = self.challenge.is_satisfied(&self.held, &self.history);
+        let solved = self.solved.is_none() && self.challenge.is_satisfied(&self.held, &self.history);
         if solved {
-            self.next(now);
+            self.solve(now);
         }
         solved
+    }
+
+    fn solve(&mut self, now: Instant) {
+        self.overdue = false;
+        self.solved = Some((now, self.challenge.progress(&self.held, &self.history)));
     }
 
     pub fn note_off(&mut self, note: u8, now: Instant) {
@@ -173,9 +198,9 @@ impl Engine {
 
     /// A chord heard from audio input, as pitch classes. Returns true if it solved the challenge.
     pub fn chord_heard(&mut self, pcs: &BTreeSet<u8>, now: Instant) -> bool {
-        let solved = matches!(self.challenge.kind, Kind::Chord(_)) && self.challenge.is_satisfied(pcs, &[]);
+        let solved = self.solved.is_none() && matches!(self.challenge.kind, Kind::Chord(_)) && self.challenge.is_satisfied(pcs, &[]);
         if solved {
-            self.next(now);
+            self.solve(now);
         }
         solved
     }
@@ -220,7 +245,15 @@ mod tests {
         let t1 = t0 + Duration::from_secs(400);
         assert!(play_triad(&mut e, t1));
         assert!(!e.overdue());
-        assert_eq!(e.remaining(t1), Duration::from_secs(300));
+        assert!(e.solved());
+        let first = e.challenge;
+        assert!(!play_triad(&mut e, t1), "can't solve twice while celebrating");
+        e.tick(t1 + Duration::from_secs(1));
+        assert_eq!(e.challenge, first, "solved challenge stays up for a moment");
+        let t2 = t1 + CELEBRATE;
+        e.tick(t2);
+        assert!(!e.solved());
+        assert_eq!(e.remaining(t2), Duration::from_secs(300));
         assert!(matches!(e.challenge.kind, Kind::Chord(ChordType::Major)));
     }
 
@@ -287,6 +320,9 @@ mod tests {
         assert!(!e.click(root + 3, t0), "clicking again lets go");
         assert!(!e.click(root + 7, t0));
         assert!(e.click(root + 16, t0), "major 3rd an octave up");
+        assert_eq!(e.held().len(), 3, "still showing while celebrating");
+        assert_eq!(e.progress().len(), 3);
+        e.tick(t0 + CELEBRATE);
         assert!(e.held().is_empty(), "clicked notes released for the next challenge");
     }
 

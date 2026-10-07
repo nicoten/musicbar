@@ -1,23 +1,28 @@
-import { invoke, fmt, onState } from "./common.js";
+import { invoke, fmt, onState, praiser } from "./common.js";
 import { mountFretboard } from "./fretboard.js";
 const { listen } = window.__TAURI__.event;
 
 const $ = (id) => document.getElementById(id);
 const renderBoard = mountFretboard($("board"));
+const praise = praiser();
 
 onState((s) => {
+  const cheer = praise(s);
   $("panel").classList.toggle("overdue", s.overdue);
+  $("panel").classList.toggle("solved", s.solved);
   $("category").textContent = s.category;
   $("short").textContent = s.short;
   $("long").textContent = s.long;
-  $("timer").textContent = s.in_call
+  $("timer").textContent = cheer
+    ? `✓ ${cheer} Next one coming up…`
+    : s.in_call
     ? `Paused, you're in a call · ${fmt(s.remaining_secs)}`
     : s.overdue
       ? "Time's up. Play it!"
       : s.paused
         ? `Paused · ${fmt(s.remaining_secs)}`
         : fmt(s.remaining_secs);
-  $("progress").style.width = `${(100 * s.remaining_secs) / s.total_secs}%`;
+  $("progress").style.width = s.solved ? "100%" : `${(100 * s.remaining_secs) / s.total_secs}%`;
   $("held").textContent = s.held.length ? `Playing: ${s.held.join(" ")}` : "";
   $("pause").textContent = s.user_paused ? "Resume" : "Pause";
   $("skip").disabled = s.overdue;
