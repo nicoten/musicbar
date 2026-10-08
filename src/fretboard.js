@@ -48,7 +48,7 @@ export function mountFretboard(el) {
       b.onclick = () => {
         picked.set(note, b);
         trail = [...trail.slice(-7), noteName(note)];
-        clicks = [...clicks.slice(-15), b];
+        clicks = [...clicks.slice(-31), b];
         b.classList.remove("flash");
         void b.offsetWidth;
         b.classList.add("flash");
@@ -117,7 +117,7 @@ export function mountFretboard(el) {
     hint.textContent = chord
       ? "Click each chord tone to hold it, one per string; click again to let go."
       : s.category === "Scale"
-        ? "Click the notes in order, root to octave."
+        ? "Pick a root and click every scale note from a fret below it to three above, low string to high."
         : "Click the root, then the note above.";
     clear.hidden = !chord;
   };
@@ -144,7 +144,8 @@ function drawStaff(svg, notes, stacked) {
   let seconds = 0;
   notes.forEach((n, i) => {
     const step = (n.octave + 1) * 7 + n.letter;
-    let x = stacked ? 150 : 90 + i * 66;
+    // A whole scale position runs to ~17 notes, so a long run squeezes together.
+    let x = stacked ? 150 : 90 + i * Math.min(66, 490 / Math.max(notes.length - 1, 1));
     // In a chord, a note a step above the one below it sits on the other side of the stem.
     if (stacked && prevStep !== null && step - prevStep === 1 && seconds++ % 2 === 0) x += 13;
     else if (stacked) seconds = 0;

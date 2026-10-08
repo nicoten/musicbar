@@ -19,6 +19,9 @@ pub struct Spelled {
 }
 
 const NATURAL_PCS: [u8; 7] = [0, 2, 4, 5, 7, 9, 11];
+/// The on-screen fretboard: standard tuning, low E first, and its frets above the open strings.
+const STRINGS: [u8; 6] = [40, 45, 50, 55, 59, 64];
+const FRETS: u8 = 15;
 
 const LETTERS: &str = "CDEFGAB";
 /// Fallback names for notes outside the challenge, by the accidentals it uses.
@@ -396,8 +399,48 @@ impl Challenge {
                 }
             }
         };
+        self.spelled(notes)
+    }
+
+    fn spelled(&self, notes: Vec<u8>) -> Vec<Spelled> {
         let spelling = self.spelling();
         notes.into_iter().map(|n| spell(n, spelling[(n % 12) as usize].0)).collect()
+    }
+
+    /// A scale on the fretboard: every scale note from a fret below a root to three frets above
+    /// it, on all six strings, low to high. One list for each fret a root sits on.
+    fn positions(&self) -> Vec<Vec<u8>> {
+        if !matches!(self.kind, Kind::Scale(_)) {
+            return vec![];
+        }
+        let pcs: Vec<u8> = self.tones().iter().map(|(semis, _)| (self.root + semis) % 12).collect();
+        (0..=FRETS)
+            .filter(|&fret| STRINGS.iter().any(|open| (open + fret) % 12 == self.root))
+            .map(|fret| {
+                let frets = fret.saturating_sub(1)..=(fret + 3).min(FRETS);
+                let notes: BTreeSet<u8> =
+                    STRINGS.iter().flat_map(|open| frets.clone().map(move |f| open + f)).filter(|n| pcs.contains(&(n % 12))).collect();
+                notes.into_iter().collect()
+            })
+            .collect()
+    }
+
+    /// Like `progress`, for a scale played as a position on the fretboard: the latest run that
+    /// correctly starts one.
+    pub fn position_progress(&self, history: &[u8]) -> Vec<Spelled> {
+        let positions = self.positions();
+        let notes = (1..=history.len())
+            .rev()
+            .map(|k| &history[history.len() - k..])
+            .find(|run| positions.iter().any(|p| p.starts_with(run)))
+            .map(<[u8]>::to_vec)
+            .unwrap_or_default();
+        self.spelled(notes)
+    }
+
+    /// Like `is_satisfied`, for a scale played as a position on the fretboard.
+    pub fn position_played(&self, history: &[u8]) -> bool {
+        self.positions().iter().any(|p| history.ends_with(p))
     }
 
     /// The answer as MIDI notes from the root in the C3 octave: chord tones low to high, or the
@@ -483,6 +526,25 @@ mod tests {
         let natural = [57, 59, 60, 62, 64, 65, 67, 69];
         assert!(!c.is_satisfied(&set(&[]), &natural));
         assert!(!c.is_satisfied(&set(&[]), &a_harm[..7]));
+    }
+
+    #[test]
+    fn scale_position_on_the_fretboard() {
+        // G major from the root on the low E's 3rd fret: frets 2–5 on every string.
+        let g = Challenge { root: 7, kind: Kind::Scale(ScaleType::Major) };
+        let box_ = [42, 43, 45, 47, 48, 50, 52, 54, 55, 57, 59, 60, 62, 64, 66, 67, 69];
+        assert!(g.positions().contains(&box_.to_vec()));
+        assert!(g.position_played(&box_));
+        let mut with_mistake_before = vec![41];
+        with_mistake_before.extend(box_);
+        assert!(g.position_played(&with_mistake_before));
+        assert!(!g.position_played(&box_[..16]), "missing the top note");
+        assert!(!g.position_played(&[43, 45, 47, 48, 50, 52, 54, 55]), "one octave isn't enough");
+        assert_eq!(g.position_progress(&[41, 42, 43, 45]).len(), 3);
+        assert!(g.position_progress(&[42, 44]).is_empty(), "wrong note resets");
+        // A root on an open string: frets 0–3.
+        let e = Challenge { root: 4, kind: Kind::Scale(ScaleType::NaturalMinor) };
+        assert_eq!(e.positions()[0][..3], [40, 42, 43]);
     }
 
     #[test]
