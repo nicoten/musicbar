@@ -25,7 +25,6 @@ const TICK: Duration = Duration::from_millis(250);
 const NAG_EVERY: Duration = Duration::from_secs(3);
 const CALL_POLL: Duration = Duration::from_secs(2);
 const WARN_SECS: u64 = 10;
-const ALARM_SOUND: &str = "/System/Library/Sounds/Sosumi.aiff";
 const WARN_SOUND: &str = "/System/Library/Sounds/Tink.aiff";
 /// Config dir name from before the app was renamed to MusicBar.
 const OLD_CONFIG_DIR: &str = "com.nicotejera.musicblock";
@@ -171,12 +170,9 @@ fn spawn_ticker(app: AppHandle) {
             if !snap.overdue || snap.paused {
                 continue;
             }
-            // Keep shoving the alarm back in front, unless you're using the panel/settings.
+            // Keep shoving the alarm back in front (silently), unless you're using the panel/settings.
             if fired || (!busy && last_nag.elapsed() >= NAG_EVERY) {
                 show_alarm(&app);
-                if sound {
-                    play(ALARM_SOUND);
-                }
                 last_nag = Instant::now();
             }
         }

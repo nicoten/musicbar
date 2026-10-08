@@ -166,8 +166,12 @@ impl Engine {
         self.solved = Some((now, self.challenge.progress(&self.held, &self.history)));
     }
 
+    /// A note clicked on the fretboard stays held until clicked again, whatever the inputs say (the
+    /// mic hears MusicBar pluck it and reports it stopping).
     pub fn note_off(&mut self, note: u8, now: Instant) {
-        self.held.remove(&note);
+        if !self.clicked.contains(&note) {
+            self.held.remove(&note);
+        }
         if self.last_note == Some(note) {
             self.last_note_off = Some(now);
         }
@@ -329,6 +333,18 @@ mod tests {
         assert_eq!(e.progress().len(), 3);
         e.tick(t0 + CELEBRATE);
         assert!(e.held().is_empty(), "clicked notes released for the next challenge");
+    }
+
+    #[test]
+    fn input_note_off_doesnt_release_a_clicked_note() {
+        let t0 = Instant::now();
+        let mut e = engine(t0);
+        let root = 48 + e.challenge.root;
+        e.click(root, t0);
+        e.note_off(root, t0);
+        assert!(e.held().contains(&root), "the mic hearing the pluck stop doesn't let go");
+        e.click(root, t0);
+        assert!(e.held().is_empty(), "clicking again does");
     }
 
     #[test]

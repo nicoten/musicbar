@@ -7,8 +7,8 @@ input). Play the challenge before the timer runs out, or a full-screen alarm tak
 - Intervals: root then the note above (sequential or together), ascending within an octave.
 - Scales: one octave ascending from the root (melodic minor = ascending form).
 - No instrument handy? Click the menu bar item and click the notes on a guitar neck: in order
-  for intervals and scales, or click each chord tone to hold it (click again to let go). Settings can
-  also put the fretboard on the alarm screen.
+  for intervals and scales, or click each chord tone to hold it (click again to let go). The
+  fretboard is on the alarm screen too (Settings can hide it there).
 - Clicked frets sound like a plucked string, and every solved challenge is played back: chords
   together, intervals one note then the other, scales up the octave. While that rings, audio input
   ignores new notes so the mic doesn't hear MusicBar as you.

@@ -36,7 +36,7 @@ impl Default for Settings {
             sound: true,
             pause_in_calls: true,
             launch_at_login: true,
-            fretboard_on_alarm: false,
+            fretboard_on_alarm: true,
         }
     }
 }
