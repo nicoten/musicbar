@@ -1,6 +1,6 @@
 use crate::settings::Settings;
 use crate::theory::{Challenge, Kind, Spelled};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant};
 
 const HISTORY_LEN: usize = 16;
@@ -20,8 +20,9 @@ pub struct Engine {
     in_call: bool,
     overdue: bool,
     held: BTreeSet<u8>,
-    /// Notes held down by clicking the on-screen fretboard (chord challenges only).
-    clicked: BTreeSet<u8>,
+    /// Notes held down by clicking the on-screen fretboard (chord challenges only), by string: one
+    /// note per string, like a real guitar.
+    clicked: BTreeMap<u8, u8>,
     history: Vec<u8>,
     last_note: Option<u8>,
     /// When `last_note` stopped sounding; `None` while it's still held.
@@ -41,7 +42,7 @@ impl Engine {
             in_call: false,
             overdue: false,
             held: BTreeSet::new(),
-            clicked: BTreeSet::new(),
+            clicked: BTreeMap::new(),
             history: Vec::new(),
             last_note: None,
             last_note_off: None,
@@ -169,7 +170,7 @@ impl Engine {
     /// A note clicked on the fretboard stays held until clicked again, whatever the inputs say (the
     /// mic hears MusicBar pluck it and reports it stopping).
     pub fn note_off(&mut self, note: u8, now: Instant) {
-        if !self.clicked.contains(&note) {
+        if !self.is_held_by_click(note) {
             self.held.remove(&note);
         }
         if self.last_note == Some(note) {
@@ -177,30 +178,39 @@ impl Engine {
         }
     }
 
-    /// A note clicked on the on-screen fretboard: plucked for intervals and scales, toggled held for
-    /// chords. Returns true if it solved the challenge.
-    pub fn click(&mut self, note: u8, now: Instant) -> bool {
+    /// A note clicked on `string` of the on-screen fretboard: plucked for intervals and scales,
+    /// toggled held for chords. A string holds one note, so a new note on it lets go of the old one.
+    /// Returns true if it solved the challenge.
+    pub fn click(&mut self, string: u8, note: u8, now: Instant) -> bool {
         if !matches!(self.challenge.kind, Kind::Chord(_)) {
             let solved = self.note_on(note, now);
             self.note_off(note, now);
             return solved;
         }
-        if self.clicked.remove(&note) {
-            self.note_off(note, now);
-            return false;
+        if let Some(old) = self.clicked.remove(&string) {
+            self.note_off(old, now);
+            if old == note {
+                return false;
+            }
         }
-        self.clicked.insert(note);
+        // The same note held on another string moves here.
+        self.clicked.retain(|_, n| *n != note);
+        self.clicked.insert(string, note);
         self.note_on(note, now)
     }
 
-    /// True if `note` is held down by a click, so clicking it again lets go.
-    pub fn is_clicked(&self, note: u8) -> bool {
-        self.clicked.contains(&note)
+    /// True if `note` is held down by a click on `string`, so clicking it again lets go.
+    pub fn is_clicked(&self, string: u8, note: u8) -> bool {
+        self.clicked.get(&string) == Some(&note)
+    }
+
+    fn is_held_by_click(&self, note: u8) -> bool {
+        self.clicked.values().any(|&n| n == note)
     }
 
     /// Lets go of every note held by clicking.
     pub fn clear_clicks(&mut self) {
-        for note in std::mem::take(&mut self.clicked) {
+        for note in std::mem::take(&mut self.clicked).into_values() {
             self.held.remove(&note);
         }
     }
@@ -324,11 +334,11 @@ mod tests {
         let t0 = Instant::now();
         let mut e = engine(t0);
         let root = 48 + e.challenge.root;
-        assert!(!e.click(root, t0));
-        assert!(!e.click(root + 3, t0));
-        assert!(!e.click(root + 3, t0), "clicking again lets go");
-        assert!(!e.click(root + 7, t0));
-        assert!(e.click(root + 16, t0), "major 3rd an octave up");
+        assert!(!e.click(5, root, t0));
+        assert!(!e.click(4, root + 3, t0));
+        assert!(!e.click(4, root + 3, t0), "clicking again lets go");
+        assert!(!e.click(3, root + 7, t0));
+        assert!(e.click(2, root + 16, t0), "major 3rd an octave up");
         assert_eq!(e.held().len(), 3, "still showing while celebrating");
         assert_eq!(e.progress().len(), 3);
         e.tick(t0 + CELEBRATE);
@@ -340,11 +350,27 @@ mod tests {
         let t0 = Instant::now();
         let mut e = engine(t0);
         let root = 48 + e.challenge.root;
-        e.click(root, t0);
+        e.click(5, root, t0);
         e.note_off(root, t0);
         assert!(e.held().contains(&root), "the mic hearing the pluck stop doesn't let go");
-        e.click(root, t0);
+        e.click(5, root, t0);
         assert!(e.held().is_empty(), "clicking again does");
+    }
+
+    #[test]
+    fn a_string_holds_one_clicked_note() {
+        let t0 = Instant::now();
+        let mut e = engine(t0);
+        let root = 48 + e.challenge.root;
+        e.click(5, root, t0);
+        e.click(5, root + 4, t0);
+        assert_eq!(e.held().len(), 1, "the new fret on the same string replaces the old one");
+        assert!(e.held().contains(&(root + 4)));
+        e.click(4, root + 4, t0);
+        assert!(e.held().contains(&(root + 4)), "the same note moves to another string");
+        assert!(!e.is_clicked(5, root + 4));
+        e.click(4, root + 4, t0);
+        assert!(e.held().is_empty());
     }
 
     #[test]
@@ -353,10 +379,10 @@ mod tests {
         let settings = Settings { chords: vec![], intervals: vec![], scales: vec![crate::theory::ScaleType::Major], ..Settings::default() };
         let mut e = Engine::new(settings, t0);
         let mut note = 48 + e.challenge.root;
-        assert!(!e.click(note, t0));
+        assert!(!e.click(0, note, t0));
         for (i, step) in [2, 2, 1, 2, 2, 2, 1].into_iter().enumerate() {
             note += step;
-            assert_eq!(e.click(note, t0), i == 6);
+            assert_eq!(e.click(0, note, t0), i == 6);
             assert!(e.held().is_empty());
         }
     }

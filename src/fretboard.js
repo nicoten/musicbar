@@ -52,7 +52,7 @@ export function mountFretboard(el) {
         b.classList.remove("flash");
         void b.offsetWidth;
         b.classList.add("flash");
-        invoke("fret_click", { note });
+        invoke("fret_click", { string: s, note });
       };
       board.append(b);
     }
@@ -115,7 +115,7 @@ export function mountFretboard(el) {
     drawStaff(staff, s.progress, s.category === "Chord");
     const chord = s.category === "Chord";
     hint.textContent = chord
-      ? "Click each chord tone to hold it, click again to let go."
+      ? "Click each chord tone to hold it, one per string; click again to let go."
       : s.category === "Scale"
         ? "Click the notes in order, root to octave."
         : "Click the root, then the note above.";

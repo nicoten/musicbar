@@ -161,8 +161,8 @@ fn spawn_ticker(app: AppHandle) {
                 publish(&app);
                 last_snap = Some(snap.clone());
             }
-            // A solved alarm stays up (congratulating) until the next challenge loads.
-            if !snap.overdue && !snap.solved && is_visible(&app, "alarm") {
+            // Solving gets the alarm out of the way at once; the answer plays on in the background.
+            if !snap.overdue && is_visible(&app, "alarm") {
                 hide_alarm(&app);
             }
             let busy = is_visible(&app, "panel") || is_visible(&app, "settings");
@@ -319,14 +319,14 @@ fn skip(app: AppHandle) -> Snapshot {
 }
 
 #[tauri::command]
-fn fret_click(app: AppHandle, note: u8) {
+fn fret_click(app: AppHandle, string: u8, note: u8) {
     {
         let mut e = app.state::<Shared>().inner().engine();
         // Clicking a held chord tone again lets go of it, silently.
-        if !e.is_clicked(note) {
+        if !e.is_clicked(string, note) {
             synth::pluck(note);
         }
-        if e.click(note, Instant::now()) {
+        if e.click(string, note, Instant::now()) {
             synth::answer(&e.challenge);
         }
     }
