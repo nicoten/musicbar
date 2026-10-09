@@ -1,6 +1,6 @@
 [package]
 name = "musicbar"
-version = "0.2.6"
+version = "0.2.7"
 description = "Menu bar music theory drill over MIDI and audio input"
 authors = ["Nico Tejera"]
 edition = "2021"
