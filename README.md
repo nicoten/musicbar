@@ -11,10 +11,11 @@ input). Play the challenge before the timer runs out, or a full-screen alarm tak
   to let go). The fretboard is on the alarm screen too (Settings can hide it there).
 - Clicked frets sound like a plucked string, and every solved challenge is played back: chords
   together, intervals one note then the other, scales up the octave. While that rings, audio input
-  ignores new notes so the mic doesn't hear MusicBar as you.
+  ignores new notes so the mic doesn't hear MusicBar as you. Silent during calls.
 - The last note you played shows next to the challenge in the menu bar, e.g. `♪ Dm7 · 4:32 │ A2`.
 - Beeps every second for the last 10 seconds.
 - Auto-pauses during calls: any camera on, or another app using the mic while Zoom/Teams/Webex/FaceTime is running.
+  Pausing (in a call or by hand) only stops the timer: you can still answer challenges.
 - Launches at login (toggle in Settings; release builds only).
 - Updates itself from GitHub Releases: checks shortly after launch and every 6 hours, installs in the
   background and restarts once the panel is closed (never while the alarm is up). "Check for

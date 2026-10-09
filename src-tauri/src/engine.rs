@@ -88,8 +88,6 @@ impl Engine {
     pub fn progress(&self) -> Vec<Spelled> {
         match &self.solved {
             Some((_, notes)) => notes.clone(),
-            // Notes held while paused don't count, so they aren't shown as progress either.
-            None if self.paused() => self.challenge.progress(&BTreeSet::new(), &self.history),
             None => self.challenge.progress(&self.held, &self.history),
         }
     }
@@ -149,14 +147,11 @@ impl Engine {
     }
 
     /// Returns true if this note completed the challenge (the next one loads after `CELEBRATE`).
-    /// While paused a note still shows as played but doesn't count towards the challenge.
+    /// Pausing only stops the timer: notes still count.
     pub fn note_on(&mut self, note: u8, now: Instant) -> bool {
         self.held.insert(note);
         self.last_note = Some(note);
         self.last_note_off = None;
-        if self.paused() {
-            return false;
-        }
         self.history.push(note);
         if self.history.len() > HISTORY_LEN {
             self.history.remove(0);
@@ -223,10 +218,7 @@ impl Engine {
 
     /// A chord heard from audio input, as pitch classes. Returns true if it solved the challenge.
     pub fn chord_heard(&mut self, pcs: &BTreeSet<u8>, now: Instant) -> bool {
-        let solved = self.solved.is_none()
-            && !self.paused()
-            && matches!(self.challenge.kind, Kind::Chord(_))
-            && self.challenge.is_satisfied(pcs, &[]);
+        let solved = self.solved.is_none() && matches!(self.challenge.kind, Kind::Chord(_)) && self.challenge.is_satisfied(pcs, &[]);
         if solved {
             self.solve(now);
         }
@@ -297,24 +289,21 @@ mod tests {
     }
 
     #[test]
-    fn notes_played_while_paused_show_but_dont_count() {
+    fn challenges_can_be_answered_while_paused() {
         let t0 = Instant::now();
         let mut e = engine(t0);
+        e.toggle_pause(t0);
+        assert!(play_triad(&mut e, t0), "pausing only stops the timer");
+        let later = t0 + CELEBRATE;
+        e.tick(later);
+        assert!(!e.solved() && e.paused(), "the next challenge loads, still paused");
+        assert_eq!(e.remaining(later + Duration::from_secs(600)), e.settings.duration(), "with its timer stopped");
+
+        e.toggle_pause(later);
+        e.set_in_call(true, later);
         let root = e.challenge.root;
-        e.toggle_pause(t0);
-        for n in [60 + root, 64 + root, 67 + root] {
-            assert!(!e.note_on(n, t0), "a paused challenge can't be solved");
-        }
-        assert_eq!(e.held().len(), 3, "the notes still show as played");
-        assert_eq!(e.last_note(t0), Some(67 + root));
-        assert!(e.progress().is_empty());
-        for n in [60 + root, 64 + root, 67 + root] {
-            e.note_off(n, t0);
-        }
-        let major: BTreeSet<u8> = [root, (root + 4) % 12, (root + 7) % 12].into();
-        assert!(!e.chord_heard(&major, t0));
-        e.toggle_pause(t0);
-        assert!(play_triad(&mut e, t0), "counts again once unpaused");
+        let triad: BTreeSet<u8> = [root, (root + 4) % 12, (root + 7) % 12].into();
+        assert!(e.chord_heard(&triad, later), "a strummed chord counts during a call");
     }
 
     #[test]
