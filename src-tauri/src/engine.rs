@@ -3,8 +3,7 @@ use crate::theory::{Challenge, Kind, Spelled};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant};
 
-/// Enough for a scale played as a position across the fretboard.
-const HISTORY_LEN: usize = 32;
+const HISTORY_LEN: usize = 16;
 /// How long the last note stays in the menu bar after it stops.
 const NOTE_LINGER: Duration = Duration::from_secs(3);
 /// How long a solved challenge stays up, with what you played, before the next one loads.
@@ -24,9 +23,6 @@ pub struct Engine {
     /// Notes held down by clicking the on-screen fretboard (chord challenges only), by string: one
     /// note per string, like a real guitar.
     clicked: BTreeMap<u8, u8>,
-    /// Set once a note of this challenge is clicked on the fretboard: scales are then played as a
-    /// whole position, not just an octave.
-    on_fretboard: bool,
     history: Vec<u8>,
     last_note: Option<u8>,
     /// When `last_note` stopped sounding; `None` while it's still held.
@@ -47,7 +43,6 @@ impl Engine {
             overdue: false,
             held: BTreeSet::new(),
             clicked: BTreeMap::new(),
-            on_fretboard: false,
             history: Vec::new(),
             last_note: None,
             last_note_off: None,
@@ -61,7 +56,6 @@ impl Engine {
         self.overdue = false;
         self.solved = None;
         self.history.clear();
-        self.on_fretboard = false;
         self.clear_clicks();
         let full = self.settings.duration();
         match self.paused_remaining {
@@ -95,28 +89,8 @@ impl Engine {
         match &self.solved {
             Some((_, notes)) => notes.clone(),
             // Notes held while paused don't count, so they aren't shown as progress either.
-            None if self.paused() => self.progress_with(&BTreeSet::new()),
-            None => self.progress_with(&self.held),
-        }
-    }
-
-    fn as_position(&self) -> bool {
-        self.on_fretboard && matches!(self.challenge.kind, Kind::Scale(_))
-    }
-
-    fn progress_with(&self, held: &BTreeSet<u8>) -> Vec<Spelled> {
-        if self.as_position() {
-            self.challenge.position_progress(&self.history)
-        } else {
-            self.challenge.progress(held, &self.history)
-        }
-    }
-
-    fn is_satisfied(&self) -> bool {
-        if self.as_position() {
-            self.challenge.position_played(&self.history)
-        } else {
-            self.challenge.is_satisfied(&self.held, &self.history)
+            None if self.paused() => self.challenge.progress(&BTreeSet::new(), &self.history),
+            None => self.challenge.progress(&self.held, &self.history),
         }
     }
 
@@ -187,7 +161,7 @@ impl Engine {
         if self.history.len() > HISTORY_LEN {
             self.history.remove(0);
         }
-        let solved = self.solved.is_none() && self.is_satisfied();
+        let solved = self.solved.is_none() && self.challenge.is_satisfied(&self.held, &self.history);
         if solved {
             self.solve(now);
         }
@@ -196,7 +170,7 @@ impl Engine {
 
     fn solve(&mut self, now: Instant) {
         self.overdue = false;
-        self.solved = Some((now, self.progress_with(&self.held)));
+        self.solved = Some((now, self.challenge.progress(&self.held, &self.history)));
     }
 
     /// A note clicked on the fretboard stays held until clicked again, whatever the inputs say (the
@@ -215,7 +189,6 @@ impl Engine {
     /// Returns true if it solved the challenge.
     pub fn click(&mut self, string: u8, note: u8, now: Instant) -> bool {
         if !matches!(self.challenge.kind, Kind::Chord(_)) {
-            self.on_fretboard = true;
             let solved = self.note_on(note, now);
             self.note_off(note, now);
             return solved;
@@ -430,48 +403,18 @@ mod tests {
         assert!(e.held().is_empty());
     }
 
-    fn major_scale_engine(t0: Instant) -> Engine {
+    #[test]
+    fn clicks_pluck_scale_notes() {
+        let t0 = Instant::now();
         let settings = Settings { chords: vec![], intervals: vec![], scales: vec![crate::theory::ScaleType::Major], ..Settings::default() };
-        Engine::new(settings, t0)
-    }
-
-    fn octave_up(root: u8) -> Vec<u8> {
-        [0, 2, 2, 1, 2, 2, 2, 1].into_iter().scan(48 + root, |n, step| { *n += step; Some(*n) }).collect()
-    }
-
-    #[test]
-    fn octave_of_scale_from_an_instrument() {
-        let t0 = Instant::now();
-        let mut e = major_scale_engine(t0);
-        let notes = octave_up(e.challenge.root);
-        for (i, &n) in notes.iter().enumerate() {
-            assert_eq!(e.note_on(n, t0), i == 7);
+        let mut e = Engine::new(settings, t0);
+        let mut note = 48 + e.challenge.root;
+        assert!(!e.click(0, note, t0));
+        for (i, step) in [2, 2, 1, 2, 2, 2, 1].into_iter().enumerate() {
+            note += step;
+            assert_eq!(e.click(0, note, t0), i == 6);
+            assert!(e.held().is_empty());
         }
-    }
-
-    #[test]
-    fn clicked_scale_needs_the_whole_position() {
-        let t0 = Instant::now();
-        let mut e = major_scale_engine(t0);
-        for &n in &octave_up(e.challenge.root) {
-            assert!(!e.click(0, n, t0), "an octave isn't the whole position");
-            assert!(e.held().is_empty(), "clicks pluck");
-        }
-        // Root on the A string's fret r (3..=14): frets r-1..=r+3 on all strings.
-        let r = (e.challenge.root + 12 - 9) % 12 + 3;
-        let scale = [0, 2, 4, 5, 7, 9, 11].map(|s| (e.challenge.root + s) % 12);
-        let mut position: Vec<u8> = [40u8, 45, 50, 55, 59, 64]
-            .iter()
-            .flat_map(|o| (r - 1..=r + 3).map(move |f| o + f))
-            .filter(|n| scale.contains(&(n % 12)))
-            .collect();
-        position.sort();
-        position.dedup();
-        let last = position.len() - 1;
-        for (i, &n) in position.iter().enumerate() {
-            assert_eq!(e.click(0, n, t0), i == last);
-        }
-        assert_eq!(e.progress().len(), position.len());
     }
 
     #[test]
