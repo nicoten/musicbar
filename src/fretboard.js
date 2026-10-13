@@ -118,7 +118,9 @@ export function mountFretboard(el) {
       ? "Click each chord tone to hold it, one per string; click again to let go."
       : s.category === "Scale"
         ? "Click the notes in order, root to octave."
-        : "Click the root, then the note above.";
+        : s.category === "Arpeggio"
+          ? "Click the chord tones in the order shown, in any octave."
+          : "Click the root, then the note above.";
     clear.hidden = !chord;
   };
 }

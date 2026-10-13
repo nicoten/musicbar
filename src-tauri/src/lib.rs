@@ -289,6 +289,8 @@ struct Options {
     chords: Vec<Choice>,
     intervals: Vec<Choice>,
     scales: Vec<Choice>,
+    arpeggios: Vec<Choice>,
+    arpeggio_orders: Vec<Choice>,
 }
 
 fn choice<T: Serialize>(id: T, label: String) -> Choice {
@@ -353,11 +355,13 @@ fn get_settings(app: AppHandle) -> Settings {
 
 #[tauri::command]
 fn get_options() -> Options {
-    use theory::{ChordType, Interval, ScaleType};
+    use theory::{ArpeggioOrder, ChordType, Interval, ScaleType, ARPEGGIO_CHORDS};
     Options {
         chords: ChordType::ALL.iter().map(|&c| choice(c, format!("C{} ({})", c.suffix(), c.name()))).collect(),
         intervals: Interval::ALL.iter().map(|&i| choice(i, format!("{} ({})", i.short(), i.name()))).collect(),
         scales: ScaleType::ALL.iter().map(|&s| choice(s, s.name().to_string())).collect(),
+        arpeggios: ARPEGGIO_CHORDS.iter().map(|&c| choice(c, format!("C{} ({})", c.suffix(), c.name()))).collect(),
+        arpeggio_orders: ArpeggioOrder::all().into_iter().map(|o| choice(o, o.to_string())).collect(),
     }
 }
 

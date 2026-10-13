@@ -2,7 +2,13 @@ import { invoke } from "./common.js";
 const { listen } = window.__TAURI__.event;
 
 const $ = (id) => document.getElementById(id);
-const GROUPS = { chords: "Chords", intervals: "Intervals", scales: "Scales" };
+const GROUPS = {
+  chords: "Chords",
+  intervals: "Intervals",
+  scales: "Scales",
+  arpeggios: "Arpeggios",
+  arpeggio_orders: "Arpeggio orders",
+};
 
 function renderGroup(key, choices, selected) {
   const fs = $(key);
@@ -71,6 +77,8 @@ $("form").onsubmit = async (e) => {
     chords: checked("chords"),
     intervals: checked("intervals"),
     scales: checked("scales"),
+    arpeggios: checked("arpeggios"),
+    arpeggio_orders: checked("arpeggio_orders"),
     minutes: Number($("minutes").value),
     midi_port: $("midi").value || null,
     audio_enabled: $("audio_enabled").checked,

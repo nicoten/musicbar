@@ -1,13 +1,15 @@
 # MusicBar
 
-Menu bar app that drills you on chords, intervals and scales over MIDI or your guitar (any audio
+Menu bar app that drills you on chords, intervals, scales and arpeggios over MIDI or your guitar (any audio
 input). Play the challenge before the timer runs out, or a full-screen alarm takes over until you do.
 
 - Chords: any voicing/inversion, exact pitch classes held together (MIDI), or strummed (audio).
 - Intervals: root then the note above (sequential or together), ascending within an octave.
 - Scales: one octave ascending from the root (melodic minor = ascending form).
+- Arpeggios: 7, m7, maj7 and ø7 (half-diminished) chords, tones one after another in a given order (1-3-5-7, 3-5-7-1,
+  7-5-3-1… all 24 orders, pick which in Settings), any octave.
 - No instrument handy? Click the menu bar item and click the notes on a guitar neck: in order
-  for intervals and scales, or click each chord tone to hold it, one per string (click again
+  for intervals, scales and arpeggios, or click each chord tone to hold it, one per string (click again
   to let go). The fretboard is on the alarm screen too (Settings can hide it there).
 - Clicked frets sound like a plucked string, and every solved challenge is played back: chords
   together, intervals one note then the other, scales up the octave. While that rings, audio input

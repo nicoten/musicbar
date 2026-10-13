@@ -30,12 +30,12 @@ pub fn pluck(note: u8) {
 }
 
 /// Plays the answer to `c` after a short pause: a chord together, an interval's two notes one after
-/// the other, a scale up the octave.
+/// the other, a scale up the octave, an arpeggio's tones in order.
 pub fn answer(c: &Challenge) {
     let gap = match c.kind {
         Kind::Chord(_) => STRUM,
         Kind::Interval(_) => INTERVAL_GAP,
-        Kind::Scale(_) => SCALE_GAP,
+        Kind::Scale(_) | Kind::Arpeggio(..) => SCALE_GAP,
     };
     play(c.notes().into_iter().zip(0..).map(|(n, i)| (n, ANSWER_AFTER + gap * i)).collect())
 }

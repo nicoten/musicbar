@@ -237,7 +237,7 @@ mod tests {
     use crate::theory::ChordType;
 
     fn engine(now: Instant) -> Engine {
-        let settings = Settings { chords: vec![ChordType::Major], intervals: vec![], scales: vec![], minutes: 5, ..Settings::default() };
+        let settings = Settings { chords: vec![ChordType::Major], intervals: vec![], scales: vec![], arpeggios: vec![], minutes: 5, ..Settings::default() };
         Engine::new(settings, now)
     }
 
@@ -395,13 +395,25 @@ mod tests {
     #[test]
     fn clicks_pluck_scale_notes() {
         let t0 = Instant::now();
-        let settings = Settings { chords: vec![], intervals: vec![], scales: vec![crate::theory::ScaleType::Major], ..Settings::default() };
+        let settings = Settings { chords: vec![], intervals: vec![], scales: vec![crate::theory::ScaleType::Major], arpeggios: vec![], ..Settings::default() };
         let mut e = Engine::new(settings, t0);
         let mut note = 48 + e.challenge.root;
         assert!(!e.click(0, note, t0));
         for (i, step) in [2, 2, 1, 2, 2, 2, 1].into_iter().enumerate() {
             note += step;
             assert_eq!(e.click(0, note, t0), i == 6);
+            assert!(e.held().is_empty());
+        }
+    }
+
+    #[test]
+    fn clicks_pluck_arpeggio_notes() {
+        let t0 = Instant::now();
+        let settings = Settings { chords: vec![], intervals: vec![], scales: vec![], arpeggios: vec![ChordType::Dominant7], ..Settings::default() };
+        let mut e = Engine::new(settings, t0);
+        let notes = e.challenge.notes();
+        for (i, &n) in notes.iter().enumerate() {
+            assert_eq!(e.click(0, n + 12, t0), i == 3);
             assert!(e.held().is_empty());
         }
     }

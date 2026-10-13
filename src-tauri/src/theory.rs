@@ -236,11 +236,59 @@ impl ScaleType {
     }
 }
 
+/// 7th chords that can be asked for as arpeggios.
+pub const ARPEGGIO_CHORDS: [ChordType; 4] =
+    [ChordType::Dominant7, ChordType::Minor7, ChordType::Major7, ChordType::HalfDiminished7];
+
+/// The order to play a 7th chord's tones in: chord-tone indices (0 = root … 3 = 7th), written
+/// as degrees, e.g. "3-5-7-1".
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct ArpeggioOrder([u8; 4]);
+
+impl ArpeggioOrder {
+    pub const UP: ArpeggioOrder = ArpeggioOrder([0, 1, 2, 3]);
+
+    /// Every order of the four tones, 1-3-5-7 first.
+    pub fn all() -> Vec<ArpeggioOrder> {
+        (0..4u8)
+            .flat_map(|a| (0..4u8).flat_map(move |b| (0..4u8).flat_map(move |c| (0..4u8).map(move |d| [a, b, c, d]))))
+            .filter(|t| (0..4u8).all(|i| t.contains(&i)))
+            .map(ArpeggioOrder)
+            .collect()
+    }
+
+    pub fn tones(self) -> [u8; 4] {
+        self.0
+    }
+}
+
+impl std::fmt::Display for ArpeggioOrder {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let degrees: Vec<String> = self.0.iter().map(|&t| (t * 2 + 1).to_string()).collect();
+        f.write_str(&degrees.join("-"))
+    }
+}
+
+impl From<ArpeggioOrder> for String {
+    fn from(o: ArpeggioOrder) -> String {
+        o.to_string()
+    }
+}
+
+impl TryFrom<String> for ArpeggioOrder {
+    type Error = String;
+    fn try_from(s: String) -> Result<Self, String> {
+        Self::all().into_iter().find(|o| o.to_string() == s).ok_or_else(|| format!("not an arpeggio order: {s}"))
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Chord(ChordType),
     Interval(Interval),
     Scale(ScaleType),
+    Arpeggio(ChordType, ArpeggioOrder),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -264,8 +312,20 @@ impl Challenge {
         c
     }
 
+    /// All the orders of one arpeggio count as a single kind, so they don't crowd out the rest.
     fn pick(kinds: &[Kind]) -> Challenge {
-        Challenge { root: fastrand::u8(0..12), kind: kinds[fastrand::usize(..kinds.len())] }
+        let same_arpeggio = |a: &Kind, b: &Kind| matches!((a, b), (Kind::Arpeggio(x, _), Kind::Arpeggio(y, _)) if x == y);
+        let heads: Vec<&Kind> =
+            kinds.iter().enumerate().filter(|(i, k)| !kinds[..*i].iter().any(|p| same_arpeggio(p, k))).map(|(_, k)| k).collect();
+        let head = heads[fastrand::usize(..heads.len())];
+        let kind = match head {
+            Kind::Arpeggio(..) => {
+                let orders: Vec<&Kind> = kinds.iter().filter(|k| same_arpeggio(k, head)).collect();
+                *orders[fastrand::usize(..orders.len())]
+            }
+            _ => *head,
+        };
+        Challenge { root: fastrand::u8(0..12), kind }
     }
 
     pub fn category(&self) -> &'static str {
@@ -273,19 +333,20 @@ impl Challenge {
             Kind::Chord(_) => "Chord",
             Kind::Interval(_) => "Interval",
             Kind::Scale(_) => "Scale",
+            Kind::Arpeggio(..) => "Arpeggio",
         }
     }
 
     fn root_name(&self) -> &'static str {
         let minor = match self.kind {
-            Kind::Chord(c) => c.minor(),
+            Kind::Chord(c) | Kind::Arpeggio(c, _) => c.minor(),
             Kind::Interval(_) => false,
             Kind::Scale(s) => s != ScaleType::Major,
         };
         pitch_name(self.root, minor)
     }
 
-    /// Compact label for the menu bar, e.g. "Dm7", "D → m3", "D harm. minor".
+    /// Compact label for the menu bar, e.g. "Dm7", "D → m3", "D harm. minor", "Dm7 3-5-7-1".
     pub fn short(&self) -> String {
         let root = self.root_name();
         match self.kind {
@@ -300,6 +361,7 @@ impl Challenge {
                 };
                 format!("{root} {name}")
             }
+            Kind::Arpeggio(c, o) => format!("{root}{} {o}", c.suffix()),
         }
     }
 
@@ -309,13 +371,14 @@ impl Challenge {
             Kind::Chord(c) => format!("{root} {} chord", c.name()),
             Kind::Interval(i) => format!("{} up from {root}", i.name()),
             Kind::Scale(s) => format!("{root} {} scale, one octave up", s.name()),
+            Kind::Arpeggio(c, o) => format!("{root} {} arpeggio, {o}", c.name()),
         }
     }
 
     /// The challenge's own notes as (semitones above the root, letters above the root's letter).
     fn tones(&self) -> Vec<(u8, u8)> {
         match self.kind {
-            Kind::Chord(c) => c.intervals().iter().zip([0, 2, 4, 6]).map(|(&i, l)| (i, l)).collect(),
+            Kind::Chord(c) | Kind::Arpeggio(c, _) => c.intervals().iter().zip([0, 2, 4, 6]).map(|(&i, l)| (i, l)).collect(),
             Kind::Interval(i) => vec![(0, 0), (i.semitones(), INTERVAL_LETTERS[i.semitones() as usize])],
             Kind::Scale(s) => {
                 let mut up = 0;
@@ -367,8 +430,9 @@ impl Challenge {
     }
 
     /// The notes played so far that are correct, spelled in key, for the staff:
-    /// scales, the latest run that correctly starts the scale; chords, the held chord tones, low to
-    /// high; intervals, the root once it's the last note played.
+    /// scales, the latest run that correctly starts the scale; arpeggios, the latest run of tones in
+    /// the right order; chords, the held chord tones, low to high; intervals, the root once it's the
+    /// last note played.
     pub fn progress(&self, held: &BTreeSet<u8>, history: &[u8]) -> Vec<Spelled> {
         let notes: Vec<u8> = match self.kind {
             Kind::Scale(s) => {
@@ -377,6 +441,16 @@ impl Challenge {
                         && run.windows(2).zip(s.steps()).all(|(w, step)| w[1].checked_sub(w[0]) == Some(step))
                 };
                 (1..=history.len().min(8))
+                    .rev()
+                    .map(|k| &history[history.len() - k..])
+                    .find(|run| fits(run))
+                    .map(<[u8]>::to_vec)
+                    .unwrap_or_default()
+            }
+            Kind::Arpeggio(..) => {
+                let want = self.arpeggio_pcs();
+                let fits = |run: &[u8]| run.iter().zip(want).all(|(n, pc)| n % 12 == pc);
+                (1..=history.len().min(4))
                     .rev()
                     .map(|k| &history[history.len() - k..])
                     .find(|run| fits(run))
@@ -400,14 +474,21 @@ impl Challenge {
         notes.into_iter().map(|n| spell(n, spelling[(n % 12) as usize].0)).collect()
     }
 
+    /// The pitch classes of an arpeggio in the order asked for.
+    fn arpeggio_pcs(&self) -> [u8; 4] {
+        let Kind::Arpeggio(c, o) = self.kind else { return [0; 4] };
+        o.tones().map(|t| (self.root + c.intervals()[t as usize]) % 12)
+    }
+
     /// The answer as MIDI notes from the root in the C3 octave: chord tones low to high, or the
-    /// notes in the order they're played.
+    /// notes in the order they're played (arpeggio tones each within the octave above the root).
     pub fn notes(&self) -> Vec<u8> {
         let root = 48 + self.root;
         match self.kind {
             Kind::Chord(c) => c.intervals().iter().map(|i| root + i).collect(),
             Kind::Interval(i) => vec![root, root + i.semitones()],
             Kind::Scale(s) => s.steps().iter().scan(root, |n, step| Some(std::mem::replace(n, *n + step))).chain([root + 12]).collect(),
+            Kind::Arpeggio(c, o) => o.tones().iter().map(|&t| root + c.intervals()[t as usize]).collect(),
         }
     }
 
@@ -430,6 +511,11 @@ impl Challenge {
                 let run = &history[start..];
                 run[0] % 12 == self.root
                     && run.windows(2).zip(s.steps()).all(|(w, step)| w[1].checked_sub(w[0]) == Some(step))
+            }
+            // The tones one after another in the order asked for, in any octave.
+            Kind::Arpeggio(..) => {
+                let Some(start) = history.len().checked_sub(4) else { return false };
+                history[start..].iter().zip(self.arpeggio_pcs()).all(|(n, pc)| n % 12 == pc)
             }
         }
     }
@@ -547,6 +633,45 @@ mod tests {
         assert_eq!(Challenge { root: 1, kind: Kind::Chord(ChordType::Minor) }.short(), "C♯m");
         assert_eq!(Challenge { root: 1, kind: Kind::Chord(ChordType::Major) }.short(), "D♭");
         assert_eq!(Challenge { root: D, kind: Kind::Interval(Interval::MinorThird) }.short(), "D → m3");
+    }
+
+    #[test]
+    fn arpeggio_orders() {
+        let all = ArpeggioOrder::all();
+        assert_eq!(all.len(), 24);
+        assert_eq!(all[0], ArpeggioOrder::UP);
+        assert_eq!(ArpeggioOrder::UP.to_string(), "1-3-5-7");
+        assert_eq!(serde_json::to_string(&all[23]).unwrap(), "\"7-5-3-1\"");
+        assert_eq!(serde_json::from_str::<ArpeggioOrder>("\"3-5-7-1\"").unwrap().tones(), [1, 2, 3, 0]);
+        assert!(serde_json::from_str::<ArpeggioOrder>("\"1-1-5-7\"").is_err());
+    }
+
+    #[test]
+    fn arpeggio_in_order_any_octave() {
+        let order = serde_json::from_str("\"3-1-7-5\"").unwrap();
+        let c = Challenge { root: D, kind: Kind::Arpeggio(ChordType::Minor7, order) };
+        // F D C A
+        assert!(c.is_satisfied(&set(&[]), &[40, 53, 50, 60, 57]));
+        assert!(c.is_satisfied(&set(&[]), &[65, 50, 48, 69]), "octaves don't matter");
+        assert!(!c.is_satisfied(&set(&[]), &[50, 53, 57, 60]), "1-3-5-7 is the wrong order");
+        assert!(!c.is_satisfied(&set(&[]), &[53, 50, 60]), "missing the 5th");
+        assert_eq!(c.notes(), [53, 50, 60, 57]);
+        assert_eq!(c.short(), "Dm7 3-1-7-5");
+        assert_eq!(c.progress(&BTreeSet::new(), &[62, 53, 50]).iter().map(Spelled::name).collect::<Vec<_>>(), ["F3", "D3"]);
+        assert!(c.progress(&BTreeSet::new(), &[53, 50, 57]).is_empty(), "wrong note resets");
+
+        let cm7b5 = Challenge { root: 0, kind: Kind::Arpeggio(ChordType::HalfDiminished7, ArpeggioOrder::UP) };
+        assert!(cm7b5.is_satisfied(&set(&[]), &[60, 63, 66, 70]));
+        assert_eq!(cm7b5.note_name(66), "G♭4");
+        assert_eq!(cm7b5.short(), "Cø7 1-3-5-7");
+    }
+
+    #[test]
+    fn arpeggio_orders_dont_crowd_out_other_kinds() {
+        let mut kinds: Vec<Kind> = ArpeggioOrder::all().into_iter().map(|o| Kind::Arpeggio(ChordType::Major7, o)).collect();
+        kinds.push(Kind::Chord(ChordType::Major));
+        let chords = (0..2000).filter(|_| matches!(Challenge::random(&kinds, None).kind, Kind::Chord(_))).count();
+        assert!((800..1200).contains(&chords), "{chords} of 2000");
     }
 
     #[test]

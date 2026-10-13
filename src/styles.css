@@ -52,6 +52,7 @@ fieldset { border: 1px solid var(--line); border-radius: 10px; margin: 0 0 14px;
 legend { font-weight: 600; font-size: 13px; padding: 0 4px; }
 legend button { font-size: 11px; padding: 1px 6px; margin-left: 6px; }
 .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 13px; }
+#arpeggio_orders .checks { grid-template-columns: repeat(4, 1fr); }
 .checks label, .field { display: flex; align-items: center; gap: 6px; }
 .field { font-size: 13px; margin-bottom: 10px; justify-content: space-between; }
 .field input[type=number] { width: 70px; }

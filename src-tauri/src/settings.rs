@@ -1,4 +1,4 @@
-use crate::theory::{ChordType, Interval, Kind, ScaleType};
+use crate::theory::{ArpeggioOrder, ChordType, Interval, Kind, ScaleType, ARPEGGIO_CHORDS};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::Duration;
@@ -9,6 +9,9 @@ pub struct Settings {
     pub chords: Vec<ChordType>,
     pub intervals: Vec<Interval>,
     pub scales: Vec<ScaleType>,
+    /// 7th chords to ask for as arpeggios, each in one of `arpeggio_orders`.
+    pub arpeggios: Vec<ChordType>,
+    pub arpeggio_orders: Vec<ArpeggioOrder>,
     pub minutes: u32,
     /// `None` listens to every MIDI input.
     pub midi_port: Option<String>,
@@ -29,6 +32,8 @@ impl Default for Settings {
             chords: ChordType::ALL.to_vec(),
             intervals: Interval::ALL.to_vec(),
             scales: ScaleType::ALL.to_vec(),
+            arpeggios: ARPEGGIO_CHORDS.to_vec(),
+            arpeggio_orders: ArpeggioOrder::all(),
             minutes: 5,
             midi_port: None,
             audio_enabled: true,
@@ -46,7 +51,9 @@ impl Settings {
         let chords = self.chords.iter().map(|&c| Kind::Chord(c));
         let intervals = self.intervals.iter().map(|&i| Kind::Interval(i));
         let scales = self.scales.iter().map(|&s| Kind::Scale(s));
-        chords.chain(intervals).chain(scales).collect()
+        let arpeggios =
+            self.arpeggios.iter().flat_map(|&c| self.arpeggio_orders.iter().map(move |&o| Kind::Arpeggio(c, o)));
+        chords.chain(intervals).chain(scales).chain(arpeggios).collect()
     }
 
     pub fn duration(&self) -> Duration {
@@ -55,7 +62,10 @@ impl Settings {
 
     pub fn validate(&self) -> Result<(), String> {
         if self.kinds().is_empty() {
-            return Err("Pick at least one chord, interval or scale.".into());
+            return Err("Pick at least one chord, interval, scale or arpeggio.".into());
+        }
+        if !self.arpeggios.is_empty() && self.arpeggio_orders.is_empty() {
+            return Err("Pick at least one arpeggio order.".into());
         }
         if !(1..=240).contains(&self.minutes) {
             return Err("Timer must be between 1 and 240 minutes.".into());
