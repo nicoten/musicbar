@@ -54,6 +54,7 @@ legend button { font-size: 11px; padding: 1px 6px; margin-left: 6px; }
 .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 13px; }
 #arpeggio_orders .checks { grid-template-columns: repeat(4, 1fr); }
 .checks label, .field { display: flex; align-items: center; gap: 6px; }
+.checks label { user-select: none; }
 .field { font-size: 13px; margin-bottom: 10px; justify-content: space-between; }
 .field input[type=number] { width: 70px; }
 .field select { max-width: 260px; }

@@ -28,6 +28,9 @@ function renderGroup(key, choices, selected) {
     const label = document.createElement("label");
     label.innerHTML = `<input type="checkbox" value="${c.id}" ${selected.includes(c.id) ? "checked" : ""}/> `;
     label.append(c.label);
+    // Double-click solos this option within its group.
+    label.ondblclick = () =>
+      fs.querySelectorAll("input").forEach((i) => (i.checked = i.value === c.id));
     grid.append(label);
   }
   fs.append(legend, grid);
