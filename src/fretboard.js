@@ -5,6 +5,7 @@ const STRINGS = [64, 59, 55, 50, 45, 40];
 const FRETS = 15;
 const MARKERS = new Set([3, 5, 7, 9, 15]);
 const NAMES_KEY = "fretboard-names";
+const STAFF_KEY = "fretboard-staff";
 const ACCIDENTALS = { "-2": "𝄫", "-1": "♭", 1: "♯", 2: "𝄪" };
 const SVG = "http://www.w3.org/2000/svg";
 // Staff geometry, in diatonic steps (C0 = 0). Guitar reads treble clef an octave up, so E2..G5
@@ -23,16 +24,11 @@ export function mountFretboard(el) {
   el.classList.add("fretboard-wrap");
   /** Held notes -> the button they were clicked on, so only that spot lights up. */
   const picked = new Map();
-  let trail = [];
   /** Buttons clicked during this challenge, oldest first. */
   let clicks = [];
   let challenge = null;
   /** Pitch-class names for the current challenge, from the app state (D♯ in B major, E♭ in A♭). */
   let names = [];
-  const noteName = (note) => {
-    const { name, alter } = names[note % 12];
-    return `${name}${Math.floor((note - alter) / 12) - 1}`;
-  };
   const board = document.createElement("div");
   board.className = "fretboard";
   for (const [s, open] of STRINGS.entries()) {
@@ -47,7 +43,6 @@ export function mountFretboard(el) {
       b.style.gridColumn = fret + 1;
       b.onclick = () => {
         picked.set(note, b);
-        trail = [...trail.slice(-7), noteName(note)];
         clicks = [...clicks.slice(-15), b];
         b.classList.remove("flash");
         void b.offsetWidth;
@@ -71,24 +66,27 @@ export function mountFretboard(el) {
 
   const tools = document.createElement("div");
   tools.className = "fret-tools";
-  const hint = document.createElement("span");
-  const played = document.createElement("span");
-  played.className = "fret-trail";
-  const showNames = document.createElement("label");
-  showNames.innerHTML = `<input type="checkbox" /> Note names`;
-  const box = showNames.querySelector("input");
-  box.checked = load(NAMES_KEY) === "1";
-  el.classList.toggle("show-names", box.checked);
-  box.onchange = () => {
-    el.classList.toggle("show-names", box.checked);
-    save(NAMES_KEY, box.checked ? "1" : "0");
+  const staff = document.createElementNS(SVG, "svg");
+  /** A checkbox in the tools row, remembered across launches. */
+  const toggle = (text, key, fallback, apply) => {
+    const label = document.createElement("label");
+    label.innerHTML = `<input type="checkbox" /> ${text}`;
+    const box = label.querySelector("input");
+    box.checked = (load(key) ?? fallback) === "1";
+    apply(box.checked);
+    box.onchange = () => {
+      apply(box.checked);
+      save(key, box.checked ? "1" : "0");
+    };
+    return label;
   };
+  const showNames = toggle("Note names", NAMES_KEY, "0", (on) => el.classList.toggle("show-names", on));
+  const showStaff = toggle("Staff", STAFF_KEY, "1", (on) => staff.classList.toggle("hidden", !on));
   const clear = document.createElement("button");
   clear.type = "button";
   clear.textContent = "Clear";
   clear.onclick = () => invoke("fret_clear");
-  tools.append(hint, played, showNames, clear);
-  const staff = document.createElementNS(SVG, "svg");
+  tools.append(showNames, showStaff, clear);
   staff.classList.add("staff");
   staff.setAttribute("viewBox", `0 0 600 ${y(LOWEST) + 10}`);
   el.append(board, tools, staff);
@@ -96,7 +94,6 @@ export function mountFretboard(el) {
   return (s) => {
     if (s.short !== challenge) {
       challenge = s.short;
-      trail = [];
       clicks = [];
     }
     names = s.names;
@@ -111,16 +108,8 @@ export function mountFretboard(el) {
       b.classList.toggle("on", (held.has(note) && (picked.get(note) ?? b) === b) || shown.has(b));
       b.firstChild.textContent = names[note % 12].name;
     }
-    played.textContent = trail.length && s.category !== "Scale" ? `Clicked: ${trail.join(" ")}` : "";
-    drawStaff(staff, s.progress, s.category === "Chord");
     const chord = s.category === "Chord";
-    hint.textContent = chord
-      ? "Click each chord tone to hold it, one per string; click again to let go."
-      : s.category === "Scale"
-        ? "Click the notes in order, root to octave."
-        : s.category === "Arpeggio"
-          ? "Click the chord tones in the order shown, in any octave."
-          : "Click the root, then the note above.";
+    drawStaff(staff, s.progress, chord);
     clear.hidden = !chord;
   };
 }

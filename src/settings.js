@@ -100,5 +100,25 @@ $("form").onsubmit = async (e) => {
 };
 
 $("audio_enabled").onchange = syncAudio;
+
+function renderUpdate(u) {
+  const text = {
+    idle: `MusicBar v${u.current}`,
+    checking: "Checking for updates…",
+    up_to_date: `You're up to date (v${u.current})`,
+    installing: `Downloading v${u.version}…`,
+    ready: `v${u.version} installed`,
+    failed: "Couldn't check for updates",
+  }[u.state];
+  $("update-status").textContent = text;
+  $("update-status").title = u.state === "failed" ? u.error : "";
+  const button = $("check-updates");
+  button.textContent = u.state === "ready" ? "Restart now" : "Check for updates";
+  button.disabled = u.state === "checking" || u.state === "installing";
+}
+
+$("check-updates").onclick = () => invoke("check_for_updates");
+listen("update", (e) => renderUpdate(e.payload));
+invoke("get_update_info").then(renderUpdate);
 listen("reload-settings", load);
 load();

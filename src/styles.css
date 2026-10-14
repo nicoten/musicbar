@@ -24,26 +24,25 @@ button:disabled { opacity: .4; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* Panel */
-.panel { padding: 16px; display: flex; flex-direction: column; gap: 6px; height: 100%; }
+.panel { padding: 16px; display: flex; flex-direction: column; gap: 6px; }
 .eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .challenge { font-size: 34px; font-weight: 700; line-height: 1.1; }
 .long { color: var(--muted); font-size: 13px; }
-.timer { font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 600; margin-top: 6px; }
-.bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 6px; }
 .bar > div { height: 100%; background: var(--accent); transition: width .25s linear; }
-.panel.overdue .timer { color: var(--alarm); }
 .panel.overdue .bar > div { background: var(--alarm); }
-.panel.solved .timer { color: var(--good); }
+.panel.solved .eyebrow { color: var(--good); }
 .panel.solved .bar > div { background: var(--good); }
 .held { font-size: 12px; color: var(--muted); min-height: 16px; margin-top: 4px; }
 .panel > * { flex-shrink: 0; }
 .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.panel-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex: none; }
-.panel #board { margin-top: 4px; }
-.update { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); }
+.panel-actions { display: flex; gap: 6px; flex: none; }
+/* The fretboard runs edge to edge; its controls and staff keep the panel's gutter. */
+.panel #board { margin: 4px -16px 0; }
+.panel .fretboard { border-radius: 0; }
+.panel .fret-tools, .panel .staff { padding: 0 16px; }
+.update { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
 .update span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-button.link { border: none; background: none; padding: 2px 0; font-size: 11px; color: var(--accent); white-space: nowrap; }
-button.link:disabled { color: var(--muted); }
 
 /* Settings */
 .settings { padding: 20px 24px 24px; }
@@ -101,8 +100,7 @@ body.alarm-body.solved { background: var(--good); }
 .inlay { grid-row: 3 / 5; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .inlay::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: #e9dcc0; opacity: .55; }
 .fret-tools { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 6px; }
-.fret-tools span:first-child { margin-right: auto; }
-.fret-trail { font-variant-numeric: tabular-nums; }
+.fret-tools label:first-child { margin-left: auto; }
 .fret.flash span { animation: pluck .35s ease-out; }
 @keyframes pluck { from { opacity: 1; background: var(--dot); color: #fff; } }
 .fret-tools label { display: flex; align-items: center; gap: 4px; }
@@ -120,4 +118,4 @@ body.alarm-body.solved { background: var(--good); }
 .alarm #board { width: min(92vw, 1100px); background: rgba(0, 0, 0, .35); border-radius: 10px; padding: 14px; animation: none; }
 .alarm .fretboard { grid-template-rows: repeat(6, 36px); }
 .alarm .fret-tools { color: #fff; }
-[hidden] { display: none !important; }
+[hidden], .staff.hidden { display: none !important; }
