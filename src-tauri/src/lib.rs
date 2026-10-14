@@ -18,7 +18,7 @@ use std::sync::{Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 const TICK: Duration = Duration::from_millis(250);
@@ -266,12 +266,12 @@ fn toggle_panel(tray: &TrayIcon, rect: tauri::Rect) {
     let scale = panel.scale_factor().unwrap_or(1.0);
     let pos = rect.position.to_physical::<f64>(scale);
     let size = rect.size.to_physical::<f64>(scale);
-    let width = panel.outer_size().map(|s| s.width as f64).unwrap_or(300.0 * scale);
-    let mut x = pos.x + size.width / 2.0 - width / 2.0;
-    // Keep the (wide) panel on the screen the tray icon is on.
+    // Span the whole screen the tray icon is on, so the fretboard is as long as it can be.
+    let mut x = pos.x;
     if let Ok(Some(m)) = panel.monitor_from_point(pos.x, pos.y) {
-        let right = m.position().x as f64 + m.size().width as f64;
-        x = x.min(right - width).max(m.position().x as f64);
+        x = m.position().x as f64;
+        let height = panel.inner_size().map(|s| s.height).unwrap_or((540.0 * scale) as u32);
+        let _ = panel.set_size(PhysicalSize::new(m.size().width, height));
     }
     let _ = panel.set_position(PhysicalPosition::new(x, pos.y + size.height));
     let _ = panel.show();

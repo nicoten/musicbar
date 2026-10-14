@@ -39,7 +39,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .panel-actions { display: flex; gap: 6px; flex: none; }
 /* The fretboard runs edge to edge; its controls and staff keep the panel's gutter. */
 .panel #board { margin: 4px -16px 0; }
-.panel .fretboard { border-radius: 0; }
+.panel .fretboard { border-radius: 0; grid-template-rows: repeat(6, 32px); }
 .panel .fret-tools, .panel .staff { padding: 0 16px; }
 .update { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
 .update span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
