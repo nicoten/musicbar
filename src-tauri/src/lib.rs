@@ -18,7 +18,7 @@ use std::sync::{Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 const TICK: Duration = Duration::from_millis(250);
@@ -267,13 +267,22 @@ fn toggle_panel(tray: &TrayIcon, rect: tauri::Rect) {
     let pos = rect.position.to_physical::<f64>(scale);
     let size = rect.size.to_physical::<f64>(scale);
     // Span the whole screen the tray icon is on, so the fretboard is as long as it can be.
-    let mut x = pos.x;
-    if let Ok(Some(m)) = panel.monitor_from_point(pos.x, pos.y) {
-        x = m.position().x as f64;
-        let height = panel.inner_size().map(|s| s.height).unwrap_or((540.0 * scale) as u32);
-        let _ = panel.set_size(PhysicalSize::new(m.size().width, height));
+    // Work in points: monitors can have different scale factors, and the panel's own
+    // scale is that of whichever screen it was last on.
+    let screen = panel.available_monitors().unwrap_or_default().into_iter().find_map(|m| {
+        let s = m.scale_factor();
+        let (origin, extent) = (m.position().to_logical::<f64>(s), m.size().to_logical::<f64>(s));
+        let (x, y) = (pos.x / s, pos.y / s);
+        let inside = x >= origin.x && x < origin.x + extent.width && y >= origin.y && y < origin.y + extent.height;
+        inside.then_some((origin, extent, (pos.y + size.height) / s))
+    });
+    if let Some((origin, extent, top)) = screen {
+        let height = panel.inner_size().map(|s| s.to_logical::<f64>(scale).height).unwrap_or(540.0);
+        let _ = panel.set_position(LogicalPosition::new(origin.x, top));
+        let _ = panel.set_size(LogicalSize::new(extent.width, height));
+    } else {
+        let _ = panel.set_position(PhysicalPosition::new(pos.x, pos.y + size.height));
     }
-    let _ = panel.set_position(PhysicalPosition::new(x, pos.y + size.height));
     let _ = panel.show();
     let _ = panel.set_focus();
 }
