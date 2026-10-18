@@ -81,7 +81,7 @@ body.alarm-body.solved { background: var(--good); }
 /* Fretboard */
 .fretboard-wrap { --wood: #6b4a2f; --string: #d8c9a8; --dot: var(--accent); width: 100%; }
 .fretboard {
-  display: grid; grid-template-columns: 34px repeat(15, 1fr); grid-template-rows: repeat(6, 26px);
+  display: grid; grid-template-columns: 34px repeat(21, 1fr); grid-template-rows: repeat(6, 26px);
   background: var(--wood); border-radius: 6px; overflow: hidden;
 }
 .fret {

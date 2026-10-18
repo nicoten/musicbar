@@ -2,19 +2,19 @@ import { invoke } from "./common.js";
 
 /** Standard tuning, high E first (top row, like tab). */
 const STRINGS = [64, 59, 55, 50, 45, 40];
-const FRETS = 15;
-const MARKERS = new Set([3, 5, 7, 9, 15]);
+const FRETS = 21;
+const MARKERS = new Set([3, 5, 7, 9, 15, 17, 19, 21]);
 const NAMES_KEY = "fretboard-names";
 const STAFF_KEY = "fretboard-staff";
 const ACCIDENTALS = { "-2": "𝄫", "-1": "♭", 1: "♯", 2: "𝄪" };
 const SVG = "http://www.w3.org/2000/svg";
-// Staff geometry, in diatonic steps (C0 = 0). Guitar reads treble clef an octave up, so E2..G5
-// sounding is written E3..G6.
+// Staff geometry, in diatonic steps (C0 = 0). Guitar reads treble clef an octave up, so E2..D♭6
+// sounding is written E3..D♭7.
 const STEP = 5;
 const BOTTOM_LINE = 30; // E4
 const TOP_LINE = 38; // F5
 const LOWEST = 23;
-const HIGHEST = 46;
+const HIGHEST = 50;
 const y = (step) => 8 + (HIGHEST - step) * STEP;
 const NATURAL_PCS = [0, 2, 4, 5, 7, 9, 11];
 const midi = (n) => (n.octave + 1) * 12 + NATURAL_PCS[n.letter] + n.alter;
