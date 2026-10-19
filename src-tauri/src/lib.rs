@@ -75,7 +75,7 @@ fn snapshot(e: &Engine, now: Instant) -> Snapshot {
         total_secs: e.settings.duration().as_secs(),
         paused: e.paused(),
         user_paused: e.user_paused(),
-        in_call: e.in_call(),
+        in_call: e.call_paused(),
         overdue: e.overdue(),
         held: e.held().iter().map(|&n| e.challenge.note_name(n)).collect(),
         held_notes: e.held().iter().copied().collect(),
@@ -192,11 +192,17 @@ fn apply_launch_at_login(app: &AppHandle, on: bool) {
 
 fn spawn_call_watcher(app: AppHandle) {
     thread::spawn(move || loop {
-        let enabled = app.state::<Shared>().inner().engine().settings.pause_in_calls;
+        let enabled = {
+            let s = &app.state::<Shared>().inner().engine().settings;
+            s.pause_in_calls || s.mute_in_calls
+        };
         let in_call = enabled && calls::in_call();
-        let changed = app.state::<Shared>().inner().engine().set_in_call(in_call, Instant::now());
+        let (changed, paused) = {
+            let mut e = app.state::<Shared>().inner().engine();
+            (e.set_in_call(in_call, Instant::now()), e.call_paused())
+        };
         if changed {
-            if in_call {
+            if paused {
                 hide_alarm(&app);
             }
             publish(&app);
@@ -205,9 +211,9 @@ fn spawn_call_watcher(app: AppHandle) {
     });
 }
 
-/// Plays back a solved challenge, unless you're in a call (the call would hear it).
+/// Plays back a solved challenge, unless muted for a call (the call would hear it).
 fn play_answer(e: &Engine) {
-    if !e.in_call() {
+    if !e.muted() {
         synth::answer(&e.challenge);
     }
 }
@@ -340,8 +346,8 @@ fn skip(app: AppHandle) -> Snapshot {
 fn fret_click(app: AppHandle, string: u8, note: u8) {
     {
         let mut e = app.state::<Shared>().inner().engine();
-        // Clicking a held chord tone again lets go of it, silently. Silent in a call too.
-        if !e.is_clicked(string, note) && !e.in_call() {
+        // Clicking a held chord tone again lets go of it, silently. Silent when muted for a call too.
+        if !e.is_clicked(string, note) && !e.muted() {
             synth::pluck(note);
         }
         if e.click(string, note, Instant::now()) {

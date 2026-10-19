@@ -47,6 +47,7 @@ async function load() {
   $("minutes").value = settings.minutes;
   $("sound").checked = settings.sound;
   $("pause_in_calls").checked = settings.pause_in_calls;
+  $("mute_in_calls").checked = settings.mute_in_calls;
   $("launch_at_login").checked = settings.launch_at_login;
   $("fretboard_on_alarm").checked = settings.fretboard_on_alarm;
   const midi = $("midi");
@@ -88,6 +89,7 @@ $("form").onsubmit = async (e) => {
     audio_device: $("audio_device").value || null,
     sound: $("sound").checked,
     pause_in_calls: $("pause_in_calls").checked,
+    mute_in_calls: $("mute_in_calls").checked,
     launch_at_login: $("launch_at_login").checked,
     fretboard_on_alarm: $("fretboard_on_alarm").checked,
   };

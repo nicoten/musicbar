@@ -14,7 +14,7 @@ pub struct Engine {
     pub settings: Settings,
     pub challenge: Challenge,
     deadline: Instant,
-    /// Set while the timer is frozen, by the user or by a call.
+    /// Set while the timer is frozen, by the user or (if `pause_in_calls`) by a call.
     paused_remaining: Option<Duration>,
     user_paused: bool,
     in_call: bool,
@@ -76,8 +76,14 @@ impl Engine {
         self.user_paused
     }
 
-    pub fn in_call(&self) -> bool {
-        self.in_call
+    /// In a call, and set to pause for it.
+    pub fn call_paused(&self) -> bool {
+        self.in_call && self.settings.pause_in_calls
+    }
+
+    /// In a call, and set to keep quiet for it.
+    pub fn muted(&self) -> bool {
+        self.in_call && self.settings.mute_in_calls
     }
 
     pub fn overdue(&self) -> bool {
@@ -120,7 +126,7 @@ impl Engine {
     }
 
     fn refreeze(&mut self, now: Instant) {
-        let frozen = self.user_paused || self.in_call;
+        let frozen = self.user_paused || self.call_paused();
         match (frozen, self.paused_remaining) {
             (true, None) => self.paused_remaining = Some(self.remaining(now)),
             (false, Some(left)) => {
@@ -227,6 +233,7 @@ impl Engine {
 
     pub fn apply_settings(&mut self, settings: Settings, now: Instant) {
         self.settings = settings;
+        self.refreeze(now);
         self.next(now);
     }
 }
@@ -304,6 +311,22 @@ mod tests {
         let root = e.challenge.root;
         let triad: BTreeSet<u8> = [root, (root + 4) % 12, (root + 7) % 12].into();
         assert!(e.chord_heard(&triad, later), "a strummed chord counts during a call");
+    }
+
+    #[test]
+    fn pausing_and_muting_for_calls_are_separate() {
+        let t0 = Instant::now();
+        let mut e = engine(t0);
+        e.set_in_call(true, t0);
+        assert!(e.paused() && e.muted(), "both by default");
+
+        let s = Settings { mute_in_calls: false, ..e.settings.clone() };
+        e.apply_settings(s, t0);
+        assert!(e.paused() && !e.muted(), "sounds play during the call");
+
+        let s = Settings { pause_in_calls: false, mute_in_calls: true, ..e.settings.clone() };
+        e.apply_settings(s, t0);
+        assert!(!e.paused() && !e.call_paused() && e.muted(), "timer runs, but quietly");
     }
 
     #[test]
