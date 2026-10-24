@@ -3,6 +3,33 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::Duration;
 
+/// Ways to practise on the on-screen fretboard; each challenge uses one of those picked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FretMode {
+    /// Any fret, or MIDI/audio.
+    Free,
+    /// Only the frets of a window somewhere on the neck.
+    Window,
+    /// Name the chord shown as dots.
+    Shape,
+    /// Find an interval above a lit root, within reach.
+    Target,
+}
+
+impl FretMode {
+    pub const ALL: [FretMode; 4] = [FretMode::Free, FretMode::Window, FretMode::Shape, FretMode::Target];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            FretMode::Free => "Free: any fret",
+            FretMode::Window => "Fret window: play it within 5 frets",
+            FretMode::Shape => "Name the shape",
+            FretMode::Target => "Target notes: 5 in a row",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -26,6 +53,7 @@ pub struct Settings {
     pub launch_at_login: bool,
     /// Show the clickable fretboard on the alarm screen.
     pub fretboard_on_alarm: bool,
+    pub fret_modes: Vec<FretMode>,
 }
 
 impl Default for Settings {
@@ -45,6 +73,7 @@ impl Default for Settings {
             mute_in_calls: true,
             launch_at_login: true,
             fretboard_on_alarm: true,
+            fret_modes: vec![FretMode::Free],
         }
     }
 }
@@ -59,6 +88,13 @@ impl Settings {
         chords.chain(intervals).chain(scales).chain(arpeggios).collect()
     }
 
+    /// Chords to show as shapes: the chords and arpeggio chords picked.
+    pub fn shape_chords(&self) -> Vec<ChordType> {
+        let mut out = self.chords.clone();
+        out.extend(self.arpeggios.iter().filter(|c| !self.chords.contains(c)));
+        out
+    }
+
     pub fn duration(&self) -> Duration {
         Duration::from_secs(self.minutes.max(1) as u64 * 60)
     }
@@ -69,6 +105,12 @@ impl Settings {
         }
         if !self.arpeggios.is_empty() && self.arpeggio_orders.is_empty() {
             return Err("Pick at least one arpeggio order.".into());
+        }
+        if self.fret_modes.is_empty() {
+            return Err("Pick at least one fretboard mode.".into());
+        }
+        if self.fret_modes == [FretMode::Shape] && self.shape_chords().is_empty() {
+            return Err("Name the shape needs at least one chord or arpeggio.".into());
         }
         if !(1..=240).contains(&self.minutes) {
             return Err("Timer must be between 1 and 240 minutes.".into());

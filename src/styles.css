@@ -99,6 +99,25 @@ body.alarm-body.solved { background: var(--good); }
 .fret.on span { opacity: 1; background: var(--dot); color: #fff; box-shadow: 0 0 0 2px #fff; }
 .inlay { grid-row: 3 / 5; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .inlay::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: #e9dcc0; opacity: .55; }
+.fret:disabled { cursor: default; opacity: 1; }
+.fret:disabled::after { content: ""; position: absolute; inset: 0; background: rgba(0, 0, 0, .55); pointer-events: none; }
+.fret:disabled:hover { background: none; }
+.fret.dot span { opacity: 1; background: #f2efe8; color: transparent; }
+.fret.dot.root span { box-shadow: 0 0 0 3px #e8a33d; }
+.fret.dot.named span, .show-names .fret.dot span { color: #1d1d1f; }
+.fretboard.miss { animation: miss .35s ease-in-out; }
+@keyframes miss {
+  0%, 100% { transform: translateX(0); box-shadow: none; }
+  25% { transform: translateX(-6px); box-shadow: 0 0 0 3px var(--alarm); }
+  75% { transform: translateX(6px); box-shadow: 0 0 0 3px var(--alarm); }
+}
+.namer { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.panel .namer { padding: 0 16px; }
+.namer-row { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.namer button { min-width: 44px; }
+.namer button.picked { background: var(--accent); border-color: var(--accent); color: #fff; }
+.namer kbd { font: inherit; font-size: 10px; opacity: .55; margin-left: 5px; }
+.alarm .namer button { color: var(--fg); }
 .fret-tools { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 6px; }
 .fret-tools label:first-child { margin-left: auto; }
 .fret.flash span { animation: pluck .35s ease-out; }

@@ -38,6 +38,8 @@ export function mountFretboard(el) {
       b.type = "button";
       b.className = fret === 0 ? "fret open" : "fret";
       b.dataset.note = note;
+      b.dataset.spot = `${s}-${fret}`;
+      b.dataset.fret = fret;
       b.innerHTML = "<span></span>";
       b.style.gridRow = s + 1;
       b.style.gridColumn = fret + 1;
@@ -64,6 +66,8 @@ export function mountFretboard(el) {
   inlay(12, "2 / 4");
   inlay(12, "4 / 6");
 
+  const namer = mountNamer();
+
   const tools = document.createElement("div");
   tools.className = "fret-tools";
   const staff = document.createElementNS(SVG, "svg");
@@ -89,7 +93,8 @@ export function mountFretboard(el) {
   tools.append(showNames, showStaff, clear);
   staff.classList.add("staff");
   staff.setAttribute("viewBox", `0 0 600 ${y(LOWEST) + 10}`);
-  el.append(board, tools, staff);
+  el.append(board, namer.el, tools, staff);
+  let misses = 0;
 
   return (s) => {
     if (s.short !== challenge) {
@@ -103,14 +108,114 @@ export function mountFretboard(el) {
     const answer = s.solved && s.category !== "Chord" ? s.progress.map(midi) : [];
     const run = clicks.slice(-answer.length);
     const shown = answer.length && run.every((b, i) => Number(b.dataset.note) === answer[i]) ? new Set(run) : new Set();
+    const dots = new Map(s.dots.map((d) => [`${d.string}-${d.fret}`, d]));
+    const [lo, hi] = s.window ?? [0, 99];
     for (const b of board.querySelectorAll(".fret")) {
       const note = Number(b.dataset.note);
+      const fret = Number(b.dataset.fret);
+      const dot = dots.get(b.dataset.spot);
       b.classList.toggle("on", (held.has(note) && (picked.get(note) ?? b) === b) || shown.has(b));
+      b.classList.toggle("dot", !!dot);
+      b.classList.toggle("root", !!dot?.root);
+      // A target's root is named; a shape's root isn't, until it's named.
+      b.classList.toggle("named", !!dot?.root && (s.mode === "target" || s.solved));
+      b.disabled = !((fret >= lo && fret <= hi) || (lo === 1 && fret === 0));
       b.firstChild.textContent = names[note % 12].name;
     }
+    if (s.misses > misses) {
+      board.classList.remove("miss");
+      void board.offsetWidth;
+      board.classList.add("miss");
+    }
+    misses = s.misses;
+    namer.render(s);
     const chord = s.category === "Chord";
-    drawStaff(staff, s.progress, chord);
+    drawStaff(staff, s.progress, chord || s.mode === "shape");
     clear.hidden = !chord;
+  };
+}
+
+const ROOTS = ["C", "C♯/D♭", "D", "D♯/E♭", "E", "F", "F♯/G♭", "G", "G♯/A♭", "A", "A♯/B♭", "B"];
+const LETTER_PCS = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
+
+/**
+ * Root and chord-type buttons for naming a shape, each with a key: a letter picks the root, then
+ * # sharpens it or b flattens it, then a number picks the type and answers.
+ */
+function mountNamer() {
+  const el = document.createElement("div");
+  el.className = "namer";
+  el.hidden = true;
+  const roots = document.createElement("div");
+  const types = document.createElement("div");
+  roots.className = types.className = "namer-row";
+  el.append(roots, types);
+  let root = null;
+  let afterLetter = false;
+  let chords = [];
+
+  const pickRoot = (pc) => {
+    root = pc;
+    for (const b of roots.children) b.classList.toggle("picked", Number(b.dataset.pc) === pc);
+  };
+  const answer = (chord) => {
+    if (root === null) return;
+    invoke("name_shape", { root, chord });
+    pickRoot(null);
+  };
+  ROOTS.forEach((name, pc) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.pc = pc;
+    b.textContent = name;
+    b.onclick = () => pickRoot(pc);
+    roots.append(b);
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (el.hidden || e.metaKey || e.ctrlKey || e.altKey) return;
+    const key = e.key.toLowerCase();
+    if (key === "b" && afterLetter && root !== null) {
+      pickRoot((root + 11) % 12);
+      afterLetter = false;
+    } else if (key in LETTER_PCS) {
+      pickRoot(LETTER_PCS[key]);
+      afterLetter = true;
+      return;
+    } else if (e.key === "#" && afterLetter && root !== null) {
+      pickRoot((root + 1) % 12);
+      afterLetter = false;
+    } else if (/^[1-9]$/.test(e.key) && chords[Number(e.key) - 1]) {
+      answer(chords[Number(e.key) - 1].id);
+    } else if (e.key === "Escape" || e.key === "Backspace") {
+      pickRoot(null);
+    } else {
+      return;
+    }
+    afterLetter = false;
+    e.preventDefault();
+  });
+
+  return {
+    el,
+    render(s) {
+      const show = s.mode === "shape" && !s.solved;
+      if (!show && !el.hidden) pickRoot(null);
+      el.hidden = !show;
+      const key = JSON.stringify(s.shape_chords);
+      if (types.dataset.key === key) return;
+      types.dataset.key = key;
+      chords = s.shape_chords;
+      types.replaceChildren(
+        ...chords.map((c, i) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.innerHTML = `${c.label}${i < 9 ? `<kbd>${i + 1}</kbd>` : ""}`;
+          b.onclick = () => answer(c.id);
+          return b;
+        }),
+      );
+    },
   };
 }
 

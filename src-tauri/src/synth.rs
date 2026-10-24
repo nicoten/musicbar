@@ -29,15 +29,15 @@ pub fn pluck(note: u8) {
     play(vec![(note, Duration::ZERO)]);
 }
 
-/// Plays the answer to `c` after a short pause: a chord together, an interval's two notes one after
-/// the other, a scale up the octave, an arpeggio's tones in order.
-pub fn answer(c: &Challenge) {
+/// Plays the answer to `c` (as `notes`) after a short pause: a chord together, an interval's two
+/// notes one after the other, a scale up the octave, an arpeggio's tones in order.
+pub fn answer(c: &Challenge, notes: Vec<u8>) {
     let gap = match c.kind {
         Kind::Chord(_) => STRUM,
         Kind::Interval(_) => INTERVAL_GAP,
         Kind::Scale(_) | Kind::Arpeggio(..) => SCALE_GAP,
     };
-    play(c.notes().into_iter().zip(0..).map(|(n, i)| (n, ANSWER_AFTER + gap * i)).collect())
+    play(notes.into_iter().zip(0..).map(|(n, i)| (n, ANSWER_AFTER + gap * i)).collect())
 }
 
 /// True while something played here may still be ringing, so audio input doesn't hear it as you.

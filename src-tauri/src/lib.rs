@@ -2,13 +2,14 @@ mod audio;
 mod calls;
 mod engine;
 mod midi;
+mod neck;
 mod pitch;
 mod settings;
 mod synth;
 mod theory;
 mod updates;
 
-use engine::Engine;
+use engine::{Drill, Engine};
 use midi::NoteEvent;
 use pitch::AudioEvent;
 use serde::Serialize;
@@ -64,13 +65,30 @@ struct Snapshot {
     progress: Vec<theory::Spelled>,
     /// Last note played on any input, e.g. "A2".
     note: Option<String>,
+    /// "free", "window", "shape" or "target".
+    mode: &'static str,
+    /// First and last fret of the fret window.
+    window: Option<[u8; 2]>,
+    /// Spots to mark on the fretboard: a shape to name, or the root to find a target from.
+    dots: Vec<Dot>,
+    /// Chord types to name a shape with.
+    shape_chords: Vec<Choice>,
+    /// Wrong answers so far, to flinch at each new one.
+    misses: u32,
+}
+
+#[derive(Serialize, Clone, PartialEq)]
+struct Dot {
+    string: u8,
+    fret: u8,
+    root: bool,
 }
 
 fn snapshot(e: &Engine, now: Instant) -> Snapshot {
     Snapshot {
-        category: e.challenge.category(),
-        short: e.challenge.short(),
-        long: e.challenge.long(),
+        category: e.category(),
+        short: e.short(),
+        long: e.long(),
         remaining_secs: e.remaining(now).as_millis().div_ceil(1000) as u64,
         total_secs: e.settings.duration().as_secs(),
         paused: e.paused(),
@@ -84,6 +102,37 @@ fn snapshot(e: &Engine, now: Instant) -> Snapshot {
         solved: e.solved(),
         note: e.last_note(now).map(|n| e.challenge.note_name(n)),
         names: e.challenge.pitch_names(),
+        mode: match e.drill {
+            Drill::Free => "free",
+            Drill::Window(_) => "window",
+            Drill::Shape(_) => "shape",
+            Drill::Target { .. } => "target",
+        },
+        window: match e.drill {
+            Drill::Window(lo) => Some([lo, neck::window_end(lo)]),
+            _ => None,
+        },
+        dots: match &e.drill {
+            Drill::Shape(spots) => spots
+                .iter()
+                .map(|&(string, fret)| Dot { string, fret, root: neck::note((string, fret)) % 12 == e.challenge.root })
+                .collect(),
+            Drill::Target { root: (string, fret), .. } => vec![Dot { string: *string, fret: *fret, root: true }],
+            _ => vec![],
+        },
+        shape_chords: match e.drill {
+            Drill::Shape(_) => e.settings.shape_chords().into_iter().map(|c| choice(c, chord_label(c).into())).collect(),
+            _ => vec![],
+        },
+        misses: e.misses(),
+    }
+}
+
+/// A chord type on a button, without a root.
+fn chord_label(c: theory::ChordType) -> &'static str {
+    match c.suffix() {
+        "" => "maj",
+        s => s,
     }
 }
 
@@ -214,7 +263,7 @@ fn spawn_call_watcher(app: AppHandle) {
 /// Plays back a solved challenge, unless muted for a call (the call would hear it).
 fn play_answer(e: &Engine) {
     if !e.muted() {
-        synth::answer(&e.challenge);
+        synth::answer(&e.challenge, e.answer_notes());
     }
 }
 
@@ -293,7 +342,7 @@ fn toggle_panel(tray: &TrayIcon, rect: tauri::Rect) {
     let _ = panel.set_focus();
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, PartialEq)]
 struct Choice {
     id: serde_json::Value,
     label: String,
@@ -306,6 +355,7 @@ struct Options {
     scales: Vec<Choice>,
     arpeggios: Vec<Choice>,
     arpeggio_orders: Vec<Choice>,
+    fret_modes: Vec<Choice>,
 }
 
 fn choice<T: Serialize>(id: T, label: String) -> Choice {
@@ -358,6 +408,17 @@ fn fret_click(app: AppHandle, string: u8, note: u8) {
 }
 
 #[tauri::command]
+fn name_shape(app: AppHandle, root: u8, chord: theory::ChordType) {
+    {
+        let mut e = app.state::<Shared>().inner().engine();
+        if e.name_shape(root, chord, Instant::now()) {
+            play_answer(&e);
+        }
+    }
+    publish(&app);
+}
+
+#[tauri::command]
 fn fret_clear(app: AppHandle) {
     app.state::<Shared>().inner().engine().clear_clicks();
     publish(&app);
@@ -377,6 +438,7 @@ fn get_options() -> Options {
         scales: ScaleType::ALL.iter().map(|&s| choice(s, s.name().to_string())).collect(),
         arpeggios: ARPEGGIO_CHORDS.iter().map(|&c| choice(c, format!("C{} ({})", c.suffix(), c.name()))).collect(),
         arpeggio_orders: ArpeggioOrder::all().into_iter().map(|o| choice(o, o.to_string())).collect(),
+        fret_modes: settings::FretMode::ALL.iter().map(|&m| choice(m, m.name().to_string())).collect(),
     }
 }
 
@@ -511,6 +573,7 @@ pub fn run() {
             open_settings,
             fret_click,
             fret_clear,
+            name_shape,
             quit
         ])
         .run(tauri::generate_context!())

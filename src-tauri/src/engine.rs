@@ -1,5 +1,6 @@
-use crate::settings::Settings;
-use crate::theory::{Challenge, Kind, Spelled};
+use crate::neck::{self, Spot};
+use crate::settings::{FretMode, Settings};
+use crate::theory::{Challenge, ChordType, Interval, Kind, Spelled};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant};
 
@@ -8,11 +9,32 @@ const HISTORY_LEN: usize = 16;
 const NOTE_LINGER: Duration = Duration::from_secs(3);
 /// How long a solved challenge stays up, with what you played, before the next one loads.
 pub const CELEBRATE: Duration = Duration::from_secs(3);
+/// Target notes to find in a row for one challenge.
+pub const TARGETS: u8 = 5;
+/// Intervals always asked for as targets: the chord tones shapes are built from.
+const CHORD_TONES: [Interval; 5] =
+    [Interval::MinorThird, Interval::MajorThird, Interval::PerfectFifth, Interval::MinorSeventh, Interval::MajorSeventh];
+
+/// How the current challenge is practised on the fretboard.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Drill {
+    /// Play it anywhere, on the fretboard or an instrument.
+    Free,
+    /// Play it on the fretboard within the window starting at this fret.
+    Window(u8),
+    /// Name the chord shown at these spots (the challenge is the answer).
+    Shape(Vec<Spot>),
+    /// Click the challenge's interval above the root at this spot; `done` found so far.
+    Target { root: Spot, done: u8 },
+}
 
 /// Challenge + countdown state machine. Time is passed in so it can be tested.
 pub struct Engine {
     pub settings: Settings,
     pub challenge: Challenge,
+    pub drill: Drill,
+    /// Wrong answers to this challenge (shape names and target clicks), so the screen can flinch.
+    misses: u32,
     deadline: Instant,
     /// Set while the timer is frozen, by the user or (if `pause_in_calls`) by a call.
     paused_remaining: Option<Duration>,
@@ -33,8 +55,10 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(settings: Settings, now: Instant) -> Self {
-        Self {
+        let mut e = Self {
             challenge: Challenge::random(&settings.kinds(), None),
+            drill: Drill::Free,
+            misses: 0,
             deadline: now + settings.duration(),
             settings,
             paused_remaining: None,
@@ -47,12 +71,16 @@ impl Engine {
             last_note: None,
             last_note_off: None,
             solved: None,
-        }
+        };
+        e.pick(None);
+        e
     }
 
     /// New challenge, timer restarted (stays paused if paused).
     pub fn next(&mut self, now: Instant) {
-        self.challenge = Challenge::random(&self.settings.kinds(), Some(&self.challenge));
+        let prev = self.challenge;
+        self.pick(Some(&prev));
+        self.misses = 0;
         self.overdue = false;
         self.solved = None;
         self.history.clear();
@@ -62,6 +90,125 @@ impl Engine {
             Some(_) => self.paused_remaining = Some(full),
             None => self.deadline = now + full,
         }
+    }
+
+    /// Picks a fretboard mode from those enabled, and a challenge for it.
+    fn pick(&mut self, prev: Option<&Challenge>) {
+        let modes = &self.settings.fret_modes;
+        let mode = if modes.is_empty() { FretMode::Free } else { modes[fastrand::usize(..modes.len())] };
+        let random = |kinds: &[Kind]| Challenge::random(kinds, prev);
+        (self.challenge, self.drill) = match mode {
+            FretMode::Window => (0..20)
+                .map(|_| random(&self.settings.kinds()))
+                .find_map(|c| neck::window_for(&c).map(|lo| (c, Drill::Window(lo))))
+                .unwrap_or_else(|| (random(&self.settings.kinds()), Drill::Free)),
+            FretMode::Shape if !self.settings.shape_chords().is_empty() => {
+                let kinds: Vec<Kind> = self.settings.shape_chords().into_iter().map(Kind::Chord).collect();
+                let c = random(&kinds);
+                let Kind::Chord(chord) = c.kind else { unreachable!() };
+                (c, Drill::Shape(neck::shape(c.root, chord)))
+            }
+            FretMode::Target => self.target(0),
+            _ => (random(&self.settings.kinds()), Drill::Free),
+        };
+    }
+
+    /// A target note to find: the picked intervals and chord tones, from a root anywhere.
+    fn target(&self, done: u8) -> (Challenge, Drill) {
+        let mut intervals = self.settings.intervals.clone();
+        intervals.extend(CHORD_TONES.iter().filter(|i| !self.settings.intervals.contains(i)));
+        let interval = intervals[fastrand::usize(..intervals.len())];
+        let root = neck::target_root(interval.semitones());
+        (Challenge { root: neck::note(root) % 12, kind: Kind::Interval(interval) }, Drill::Target { root, done })
+    }
+
+    /// The challenge as shown: a shape's name is hidden until it's named.
+    pub fn short(&self) -> String {
+        match self.drill {
+            Drill::Shape(_) if self.solved.is_none() => "Name this chord".into(),
+            Drill::Window(lo) => format!("{} · frets {}–{}", self.challenge.short(), lo, neck::window_end(lo)),
+            Drill::Target { done, .. } => format!("{} · {}/{TARGETS}", self.challenge.short(), (done + 1).min(TARGETS)),
+            _ => self.challenge.short(),
+        }
+    }
+
+    pub fn long(&self) -> String {
+        match &self.drill {
+            Drill::Shape(_) if self.solved.is_none() => "The ringed note is the root. Pick the root and chord type.".into(),
+            Drill::Window(lo) => format!("{}, within frets {}–{}", self.challenge.long(), lo, neck::window_end(*lo)),
+            Drill::Target { .. } => format!("{}: click it within {} frets of the lit root", self.challenge.long(), neck::REACH),
+            _ => self.challenge.long(),
+        }
+    }
+
+    pub fn category(&self) -> &'static str {
+        match self.drill {
+            Drill::Shape(_) => "Name the shape",
+            Drill::Target { .. } => "Target note",
+            _ => self.challenge.category(),
+        }
+    }
+
+    pub fn misses(&self) -> u32 {
+        self.misses
+    }
+
+    /// Notes played or clicked count toward the challenge only when it's to be played.
+    fn playable(&self) -> bool {
+        matches!(self.drill, Drill::Free | Drill::Window(_))
+    }
+
+    /// The notes to play back once solved: a shape as voiced, a target with its root.
+    pub fn answer_notes(&self) -> Vec<u8> {
+        match &self.drill {
+            Drill::Shape(spots) => {
+                let mut notes: Vec<u8> = spots.iter().map(|&s| neck::note(s)).collect();
+                notes.sort();
+                notes
+            }
+            Drill::Target { root, .. } => {
+                let Kind::Interval(i) = self.challenge.kind else { return vec![] };
+                vec![neck::note(*root), neck::note(*root) + i.semitones()]
+            }
+            _ => self.challenge.notes(),
+        }
+    }
+
+    /// An answer to "name the shape". Any name for the same notes counts (C+ is also E+).
+    /// Returns true if it's right.
+    pub fn name_shape(&mut self, root: u8, chord: ChordType, now: Instant) -> bool {
+        let Drill::Shape(spots) = &self.drill else { return false };
+        if self.solved.is_some() {
+            return false;
+        }
+        let pcs = |root: u8, chord: ChordType| chord.intervals().iter().map(|i| (root + i) % 12).collect::<BTreeSet<u8>>();
+        let Kind::Chord(want) = self.challenge.kind else { return false };
+        if pcs(root % 12, chord) != pcs(self.challenge.root, want) {
+            self.misses += 1;
+            return false;
+        }
+        let notes: BTreeSet<u8> = spots.iter().map(|&s| neck::note(s)).collect();
+        let progress = self.challenge.progress(&notes, &[]);
+        self.solve_with(now, progress);
+        true
+    }
+
+    /// A click while finding target notes. Returns true if it was the last one.
+    fn target_click(&mut self, string: u8, note: u8, now: Instant) -> bool {
+        let (Drill::Target { root, done }, Kind::Interval(i)) = (&self.drill, self.challenge.kind) else { return false };
+        let (root, done) = (*root, *done);
+        if !neck::spot(string, note).is_some_and(|s| neck::targets(root, i.semitones()).contains(&s)) {
+            self.misses += 1;
+            return false;
+        }
+        if done + 1 < TARGETS {
+            (self.challenge, self.drill) = self.target(done + 1);
+            return false;
+        }
+        self.drill = Drill::Target { root, done: TARGETS };
+        let progress = self.challenge.progress(&BTreeSet::new(), &[neck::note(root), note]);
+        self.solve_with(now, progress);
+        true
     }
 
     pub fn remaining(&self, now: Instant) -> Duration {
@@ -162,7 +309,7 @@ impl Engine {
         if self.history.len() > HISTORY_LEN {
             self.history.remove(0);
         }
-        let solved = self.solved.is_none() && self.challenge.is_satisfied(&self.held, &self.history);
+        let solved = self.solved.is_none() && self.playable() && self.challenge.is_satisfied(&self.held, &self.history);
         if solved {
             self.solve(now);
         }
@@ -170,8 +317,12 @@ impl Engine {
     }
 
     fn solve(&mut self, now: Instant) {
+        self.solve_with(now, self.challenge.progress(&self.held, &self.history));
+    }
+
+    fn solve_with(&mut self, now: Instant, progress: Vec<Spelled>) {
         self.overdue = false;
-        self.solved = Some((now, self.challenge.progress(&self.held, &self.history)));
+        self.solved = Some((now, progress));
     }
 
     /// A note clicked on the fretboard stays held until clicked again, whatever the inputs say (the
@@ -189,6 +340,13 @@ impl Engine {
     /// toggled held for chords. A string holds one note, so a new note on it lets go of the old one.
     /// Returns true if it solved the challenge.
     pub fn click(&mut self, string: u8, note: u8, now: Instant) -> bool {
+        match self.drill {
+            Drill::Shape(_) => return false,
+            Drill::Target { .. } if self.solved.is_none() => return self.target_click(string, note, now),
+            Drill::Target { .. } => return false,
+            Drill::Window(lo) if !neck::spot(string, note).is_some_and(|s| neck::in_window(lo, s.1)) => return false,
+            _ => {}
+        }
         if !matches!(self.challenge.kind, Kind::Chord(_)) {
             let solved = self.note_on(note, now);
             self.note_off(note, now);
@@ -224,7 +382,10 @@ impl Engine {
 
     /// A chord heard from audio input, as pitch classes. Returns true if it solved the challenge.
     pub fn chord_heard(&mut self, pcs: &BTreeSet<u8>, now: Instant) -> bool {
-        let solved = self.solved.is_none() && matches!(self.challenge.kind, Kind::Chord(_)) && self.challenge.is_satisfied(pcs, &[]);
+        let solved = self.solved.is_none()
+            && self.playable()
+            && matches!(self.challenge.kind, Kind::Chord(_))
+            && self.challenge.is_satisfied(pcs, &[]);
         if solved {
             self.solve(now);
         }
@@ -454,5 +615,73 @@ mod tests {
         e.note_off(52, t0 + Duration::from_secs(1));
         assert_eq!(e.last_note(t0 + Duration::from_secs(2)), Some(52));
         assert_eq!(e.last_note(t0 + Duration::from_secs(5)), None);
+    }
+
+    fn drilling(mode: FretMode, now: Instant) -> Engine {
+        let settings = Settings { fret_modes: vec![mode], intervals: vec![], ..engine(now).settings };
+        Engine::new(settings, now)
+    }
+
+    #[test]
+    fn window_only_takes_its_frets() {
+        let t0 = Instant::now();
+        let mut e = drilling(FretMode::Window, t0);
+        e.challenge = Challenge { root: 2, kind: Kind::Interval(Interval::PerfectFifth) };
+        e.drill = Drill::Window(6);
+        assert_eq!(e.short(), "D → P5 · frets 6–10");
+        // D on the A string at 5 and A on the D string at 7: right notes, but fret 5 is outside.
+        assert!(!e.click(4, 50, t0));
+        assert!(!e.click(3, 57, t0));
+        // D on the D string at 12 is out too; D on the G string at 7, A on the B string at 10 are in.
+        assert!(!e.click(3, 62, t0));
+        assert!(!e.click(2, 62, t0));
+        assert!(e.click(1, 69, t0));
+    }
+
+    #[test]
+    fn shapes_are_named_not_played() {
+        let t0 = Instant::now();
+        let mut e = drilling(FretMode::Shape, t0);
+        let Drill::Shape(spots) = e.drill.clone() else { panic!() };
+        assert_eq!(e.short(), "Name this chord");
+        let root = e.challenge.root;
+        assert!(!e.note_on(60 + root, t0) && !e.note_on(64 + root, t0) && !e.note_on(67 + root, t0), "playing it doesn't count");
+        assert!(!e.click(spots[0].0, neck::note(spots[0]), t0));
+        assert!(!e.name_shape(root + 1, ChordType::Major, t0));
+        assert_eq!(e.misses(), 1);
+        assert!(e.name_shape(root + 12, ChordType::Major, t0), "any octave of the root");
+        assert!(e.solved());
+        assert_eq!(e.short(), e.challenge.short(), "named once solved");
+        assert_eq!(e.progress().len(), spots.len());
+        assert_eq!(e.answer_notes().len(), spots.len());
+    }
+
+    #[test]
+    fn augmented_chords_take_any_root() {
+        let t0 = Instant::now();
+        let mut e = drilling(FretMode::Shape, t0);
+        e.challenge = Challenge { root: 0, kind: Kind::Chord(ChordType::Augmented) };
+        e.drill = Drill::Shape(neck::shape(0, ChordType::Augmented));
+        assert!(e.name_shape(4, ChordType::Augmented, t0), "E+ has the same notes as C+");
+    }
+
+    #[test]
+    fn targets_come_five_in_a_row() {
+        let t0 = Instant::now();
+        let mut e = drilling(FretMode::Target, t0);
+        for i in 0..TARGETS {
+            let Drill::Target { root, done } = e.drill else { panic!() };
+            assert_eq!(done, i);
+            let Kind::Interval(interval) = e.challenge.kind else { panic!() };
+            let wrong = neck::note(root) + interval.semitones() + 1;
+            let string = (0..6u8).find(|&s| neck::spot(s, wrong).is_some()).unwrap();
+            assert!(!e.click(string, wrong, t0));
+            let hit = neck::targets(root, interval.semitones())[0];
+            assert_eq!(e.click(hit.0, neck::note(hit), t0), i == TARGETS - 1);
+        }
+        assert_eq!(e.misses(), TARGETS as u32);
+        assert!(e.solved());
+        assert_eq!(e.answer_notes().len(), 2);
+        assert_eq!(e.progress().len(), 2);
     }
 }

@@ -8,6 +8,7 @@ const GROUPS = {
   scales: "Scales",
   arpeggios: "Arpeggios",
   arpeggio_orders: "Arpeggio orders",
+  fret_modes: "Fretboard modes (each challenge uses one of these)",
 };
 
 function renderGroup(key, choices, selected) {
@@ -83,6 +84,7 @@ $("form").onsubmit = async (e) => {
     scales: checked("scales"),
     arpeggios: checked("arpeggios"),
     arpeggio_orders: checked("arpeggio_orders"),
+    fret_modes: checked("fret_modes"),
     minutes: Number($("minutes").value),
     midi_port: $("midi").value || null,
     audio_enabled: $("audio_enabled").checked,

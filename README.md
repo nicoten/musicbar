@@ -11,6 +11,16 @@ input). Play the challenge before the timer runs out, or a full-screen alarm tak
 - No instrument handy? Click the menu bar item and click the notes on a guitar neck: in order
   for intervals, scales and arpeggios, or click each chord tone to hold it, one per string (click again
   to let go). The fretboard is on the alarm screen too (Settings can hide it there).
+- Fretboard modes (Settings, pick any; each challenge uses one of them):
+  - **Free**: any fret, as above.
+  - **Fret window**: the challenge comes with a 5-fret window (e.g. `Dm7 · frets 6–10`); only those frets
+    take clicks, so you find it in one position. Windows always fit the challenge.
+  - **Name the shape**: a chord voicing shows as dots with the root ringed. Pick the root and the type
+    (from the chords and arpeggios you picked) by clicking, or type it: a letter, then `#` or `b`, then the
+    type's number, shown on its button (`e` `b` then the number on `m7` = E♭m7). Playing it on an
+    instrument doesn't count.
+  - **Target notes**: a named root lights up; click the interval asked for (your intervals plus 3rds, 5th
+    and 7ths) within 4 frets of it, on any string. Five in a row solve it.
 - Clicked frets sound like a plucked string, and every solved challenge is played back: chords
   together, intervals one note then the other, scales up the octave. While that rings, audio input
   ignores new notes so the mic doesn't hear MusicBar as you. Silent during calls.
