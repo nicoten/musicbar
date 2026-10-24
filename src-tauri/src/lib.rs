@@ -323,13 +323,17 @@ fn toggle_panel(tray: &TrayIcon, rect: tauri::Rect) {
     let size = rect.size.to_physical::<f64>(scale);
     // Span the whole screen the tray icon is on, so the fretboard is as long as it can be.
     // Work in points: monitors can have different scale factors, and the panel's own
-    // scale is that of whichever screen it was last on.
-    let screen = panel.available_monitors().unwrap_or_default().into_iter().find_map(|m| {
-        let s = m.scale_factor();
-        let (origin, extent) = (m.position().to_logical::<f64>(s), m.size().to_logical::<f64>(s));
-        let (x, y) = (pos.x / s, pos.y / s);
-        let inside = x >= origin.x && x < origin.x + extent.width && y >= origin.y && y < origin.y + extent.height;
-        inside.then_some((origin, extent, (pos.y + size.height) / s))
+    // scale is that of whichever screen it was last on. Find the screen by the cursor,
+    // which is on the icon: the icon's own rect can poke above the top of the screen,
+    // and is in the pixels of a screen we don't know yet.
+    let cursor = panel.cursor_position().ok().zip(panel.primary_monitor().ok().flatten()).map(|(c, m)| c.to_logical::<f64>(m.scale_factor()));
+    let screen = cursor.and_then(|c| {
+        panel.available_monitors().unwrap_or_default().into_iter().find_map(|m| {
+            let s = m.scale_factor();
+            let (origin, extent) = (m.position().to_logical::<f64>(s), m.size().to_logical::<f64>(s));
+            let inside = c.x >= origin.x && c.x < origin.x + extent.width && c.y >= origin.y && c.y < origin.y + extent.height;
+            inside.then_some((origin, extent, (pos.y + size.height) / s))
+        })
     });
     if let Some((origin, extent, top)) = screen {
         let height = panel.inner_size().map(|s| s.to_logical::<f64>(scale).height).unwrap_or(540.0);
