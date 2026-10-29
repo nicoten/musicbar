@@ -1,9 +1,11 @@
 import { invoke, onState, praiser } from "./common.js";
 import { mountFretboard } from "./fretboard.js";
+import { mountTuner } from "./tuner.js";
 
 const $ = (id) => document.getElementById(id);
 const renderBoard = mountFretboard($("board"));
 const praise = praiser();
+mountTuner($("tuner"));
 
 onState((s) => {
   const cheer = praise(s);

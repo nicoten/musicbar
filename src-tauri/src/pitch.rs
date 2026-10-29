@@ -36,6 +36,8 @@ pub enum AudioEvent {
     Note(NoteEvent),
     /// Pitch classes of a chord that's ringing.
     Chord(BTreeSet<u8>),
+    /// Raw frequency for the tuner, every frame something is pitched, then `None` once it stops.
+    Tune(Option<f32>),
 }
 
 fn to_midi(freq: f32) -> u8 {
@@ -131,6 +133,7 @@ pub struct Analyzer {
     candidate: Option<(u8, u32)>,
     quiet: u32,
     prev_rms: f32,
+    tuning: bool,
     chord_candidate: Option<(BTreeSet<u8>, u32)>,
     last_chord: Option<BTreeSet<u8>>,
 }
@@ -158,6 +161,7 @@ impl Analyzer {
             candidate: None,
             quiet: 0,
             prev_rms: 0.0,
+            tuning: false,
             chord_candidate: None,
             last_chord: None,
         }
@@ -191,10 +195,14 @@ impl Analyzer {
         let x = &self.buf[n - self.yin_len..];
         let level = rms(x);
         let gate = if self.current.is_some() { GATE_OFF } else { GATE_ON };
-        let pitch = if level >= gate { yin(x, self.sr).map(to_midi) } else { None };
+        let freq = if level >= gate { yin(x, self.sr) } else { None };
         let onset = level >= GATE_ON && level > self.prev_rms * ONSET_RATIO;
         self.prev_rms = level;
-        self.track_note(pitch, onset, emit);
+        if freq.is_some() || self.tuning {
+            emit(AudioEvent::Tune(freq));
+        }
+        self.tuning = freq.is_some();
+        self.track_note(freq.map(to_midi), onset, emit);
 
         self.frames += 1;
         if self.frames % CHROMA_EVERY == 0 && n == self.chroma_len {
@@ -366,6 +374,29 @@ mod tests {
         }
         noise(&mut audio, 0.001);
         assert_eq!(ons(&run(SR, &audio)), seq);
+    }
+
+    #[test]
+    fn tuner_reads_how_far_off_a_note_is() {
+        for cents in [-30.0, -8.0, 0.0, 12.0, 40.0] {
+            // An A string tuned `cents` away from A2.
+            let f = freq(45) * 2f32.powf(cents / 1200.0);
+            let midi_f = 69.0 + 12.0 * (f / 440.0).log2();
+            let audio: Vec<f32> = (0..SR)
+                .map(|i| {
+                    let t = i as f32 / SR as f32;
+                    0.3 * (-t * 2.0).exp() * ((2.0 * PI * f * t).sin() + 0.5 * (4.0 * PI * f * t).sin())
+                })
+                .collect();
+            let mut a = Analyzer::new(SR);
+            let mut tones = vec![];
+            for block in audio.chunks(471) {
+                a.push(block, &mut |e| if let AudioEvent::Tune(Some(hz)) = e { tones.push(hz) });
+            }
+            assert!(!tones.is_empty());
+            let heard = 69.0 + 12.0 * (tones[tones.len() / 2] / 440.0).log2();
+            assert!((heard - midi_f).abs() * 100.0 < 3.0, "{cents} cents: heard {heard}, want {midi_f}");
+        }
     }
 
     #[test]

@@ -285,7 +285,10 @@ fn on_note(app: &AppHandle, ev: NoteEvent) {
 fn on_audio(app: &AppHandle, ev: AudioEvent) {
     match ev {
         // Don't take what MusicBar itself is playing (heard through the mic) for you playing.
-        AudioEvent::Note(NoteEvent::On(_)) | AudioEvent::Chord(_) if synth::sounding() => {}
+        AudioEvent::Note(NoteEvent::On(_)) | AudioEvent::Chord(_) | AudioEvent::Tune(Some(_)) if synth::sounding() => {}
+        AudioEvent::Tune(hz) => {
+            let _ = app.emit_to("panel", "tuner", hz);
+        }
         AudioEvent::Note(n) => on_note(app, n),
         AudioEvent::Chord(pcs) => {
             let mut e = app.state::<Shared>().inner().engine();
