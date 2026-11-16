@@ -69,6 +69,18 @@ legend button { font-size: 11px; padding: 1px 6px; margin-left: 6px; }
 .field { font-size: 13px; margin-bottom: 10px; justify-content: space-between; }
 .field input[type=number] { width: 70px; }
 .field select { max-width: 260px; }
+.settings h2 { font-size: 15px; margin: 18px 0 10px; }
+.modes { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.mappings { list-style: none; margin: 0 0 10px; padding: 0; font-size: 13px; }
+.mappings li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.mappings li span { margin-right: auto; }
+.mappings li button { font-size: 11px; padding: 1px 8px; }
+.mappings .empty { color: var(--muted); border: none; }
+.add-mapping { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.add-mapping select { max-width: 220px; }
+.add-mapping .arrow { color: var(--muted); }
+#learn.listening { border-color: var(--accent); color: var(--accent); }
+.hint { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
 .footer { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
 .status { font-size: 12px; color: var(--muted); margin-right: auto; }
 .status.error { color: var(--alarm); }

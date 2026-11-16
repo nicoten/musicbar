@@ -95,7 +95,8 @@ impl Engine {
     /// Picks a fretboard mode from those enabled, and a challenge for it.
     fn pick(&mut self, prev: Option<&Challenge>) {
         let modes = &self.settings.fret_modes;
-        let mode = if modes.is_empty() { FretMode::Free } else { modes[fastrand::usize(..modes.len())] };
+        // Outside quiz mode the fretboard is just a fretboard.
+        let mode = if modes.is_empty() || !self.settings.quiz() { FretMode::Free } else { modes[fastrand::usize(..modes.len())] };
         let random = |kinds: &[Kind]| Challenge::random(kinds, prev);
         (self.challenge, self.drill) = match mode {
             FretMode::Window => (0..20)
@@ -155,7 +156,7 @@ impl Engine {
 
     /// Notes played or clicked count toward the challenge only when it's to be played.
     fn playable(&self) -> bool {
-        matches!(self.drill, Drill::Free | Drill::Window(_))
+        self.settings.quiz() && matches!(self.drill, Drill::Free | Drill::Window(_))
     }
 
     /// The notes to play back once solved: a shape as voiced, a target with its root.
@@ -286,6 +287,9 @@ impl Engine {
 
     /// Returns true on the tick the timer runs out. Moves on once a solved challenge has been shown.
     pub fn tick(&mut self, now: Instant) -> bool {
+        if !self.settings.quiz() {
+            return false;
+        }
         if let Some((at, _)) = self.solved {
             if now.saturating_duration_since(at) >= CELEBRATE {
                 self.next(now);
@@ -405,7 +409,7 @@ mod tests {
     use crate::theory::ChordType;
 
     fn engine(now: Instant) -> Engine {
-        let settings = Settings { chords: vec![ChordType::Major], intervals: vec![], scales: vec![], arpeggios: vec![], minutes: 5, ..Settings::default() };
+        let settings = Settings { chords: vec![ChordType::Major], intervals: vec![], scales: vec![], arpeggios: vec![], minutes: 5, mode: crate::settings::Mode::Quiz, ..Settings::default() };
         Engine::new(settings, now)
     }
 
@@ -579,7 +583,7 @@ mod tests {
     #[test]
     fn clicks_pluck_scale_notes() {
         let t0 = Instant::now();
-        let settings = Settings { chords: vec![], intervals: vec![], scales: vec![crate::theory::ScaleType::Major], arpeggios: vec![], ..Settings::default() };
+        let settings = Settings { chords: vec![], intervals: vec![], scales: vec![crate::theory::ScaleType::Major], arpeggios: vec![], mode: crate::settings::Mode::Quiz, ..Settings::default() };
         let mut e = Engine::new(settings, t0);
         let mut note = 48 + e.challenge.root;
         assert!(!e.click(0, note, t0));
@@ -593,7 +597,7 @@ mod tests {
     #[test]
     fn clicks_pluck_arpeggio_notes() {
         let t0 = Instant::now();
-        let settings = Settings { chords: vec![], intervals: vec![], scales: vec![], arpeggios: vec![ChordType::Dominant7], ..Settings::default() };
+        let settings = Settings { chords: vec![], intervals: vec![], scales: vec![], arpeggios: vec![ChordType::Dominant7], mode: crate::settings::Mode::Quiz, ..Settings::default() };
         let mut e = Engine::new(settings, t0);
         let notes = e.challenge.notes();
         for (i, &n) in notes.iter().enumerate() {
@@ -683,5 +687,17 @@ mod tests {
         assert!(e.solved());
         assert_eq!(e.answer_notes().len(), 2);
         assert_eq!(e.progress().len(), 2);
+    }
+
+    #[test]
+    fn action_mode_has_no_quiz() {
+        let t0 = Instant::now();
+        let mut e = engine(t0);
+        e.apply_settings(Settings { mode: crate::settings::Mode::Action, ..e.settings.clone() }, t0);
+        assert_eq!(e.drill, Drill::Free);
+        assert!(!e.tick(t0 + Duration::from_secs(3600)), "never times out");
+        assert!(!e.overdue());
+        assert!(!play_triad(&mut e, t0), "playing the challenge doesn't solve it");
+        assert!(e.last_note(t0).is_some(), "notes still show");
     }
 }

@@ -3,6 +3,29 @@
 Menu bar app that drills you on chords, intervals, scales and arpeggios over MIDI or your guitar (any audio
 input). Play the challenge before the timer runs out, or a full-screen alarm takes over until you do.
 
+It has two modes, picked at the top of Settings (one at a time):
+
+- **Action** (the default): chords and controller pads, knobs and buttons run things on your Mac.
+- **Quiz**: the timed challenges described below.
+
+## Action mode
+
+Map a trigger to an action under **Settings → Actions**. For now the action is always "open an app" (any
+app in /Applications, /System/Applications or ~/Applications).
+
+- **Chord triggers** fire for a chord type in any key, voicing or inversion: "any maj7" fires for Cmaj7,
+  an F♯maj7 in second inversion, and so on. They work from MIDI or a strummed guitar (audio input). The notes
+  have to hold still for 100 ms, so Cmaj7 doesn't first fire "major" on its way there. Each chord fires once,
+  and nothing else fires until you let go of every note.
+- **Controller triggers** come from pads, knobs and buttons, never from keys. Pick "Pad, knob or button…",
+  click **Learn** and touch the control. Buttons fire when pressed. Knobs fire when turned past halfway, and
+  fire again only after going back below it. Pads that send notes are recorded with their channel, and then
+  only fire their trigger and never count toward a chord.
+- No challenges, timer or alarm. The menu bar shows `♪` and the last note played. The panel shows what
+  fired, e.g. `maj7 → Open Spotify`, and the fretboard and tuner work as usual.
+
+## Quiz mode
+
 - Chords: any voicing/inversion, exact pitch classes held together (MIDI), or strummed (audio).
 - Intervals: root then the note above (sequential or together), ascending within an octave.
 - Scales: one octave ascending from the root (melodic minor = ascending form).

@@ -11,6 +11,72 @@ const GROUPS = {
   fret_modes: "Fretboard modes (each challenge uses one of these)",
 };
 
+/** Action mode's mappings, as edited (saved with the rest). */
+let mappings = [];
+/** The pad/knob/button Learn picked up for the next mapping. */
+let learned = null;
+let chordLabels = {};
+let appNames = {};
+
+const CONTROL = "control";
+
+function controlLabel(c) {
+  const ch = `ch ${c.channel + 1}`;
+  if (c.type === "cc") return `Control ${c.number} · ${ch}`;
+  if (c.type === "program") return `Program ${c.number + 1} · ${ch}`;
+  return `Pad ${c.note} · ${ch}`;
+}
+
+const triggerLabel = (t) => (t.type === "chord" ? chordLabels[t.chord] : controlLabel(t.control));
+const appName = (path) => appNames[path] ?? path.split("/").pop().replace(/\.app$/, "");
+const sameTrigger = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+function renderMappings() {
+  const list = $("mappings");
+  list.innerHTML = "";
+  if (!mappings.length) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = "No actions yet. Add one below.";
+    list.append(li);
+  }
+  mappings.forEach((m, i) => {
+    const li = document.createElement("li");
+    const text = document.createElement("span");
+    text.textContent = `${triggerLabel(m.trigger)} → Open ${appName(m.action.path)}`;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Remove";
+    remove.onclick = () => {
+      mappings.splice(i, 1);
+      renderMappings();
+      setStatus("Not saved yet.");
+    };
+    li.append(text, remove);
+    list.append(li);
+  });
+}
+
+function setLearning(on) {
+  const b = $("learn");
+  b.classList.toggle("listening", on);
+  b.textContent = on ? "Touch a pad, knob or button…" : learned ? controlLabel(learned) : "Learn";
+  invoke(on ? "start_learning" : "stop_learning");
+}
+
+function syncTrigger() {
+  const control = $("trigger").value === CONTROL;
+  $("learn").hidden = !control;
+  if (!control && $("learn").classList.contains("listening")) setLearning(false);
+}
+
+function syncMode() {
+  const quiz = document.querySelector("input[name=mode]:checked")?.value === "quiz";
+  $("quiz-settings").hidden = !quiz;
+  $("action-settings").hidden = quiz;
+  document.querySelectorAll(".quiz-only").forEach((el) => (el.hidden = !quiz));
+}
+
 function renderGroup(key, choices, selected) {
   const fs = $(key);
   fs.innerHTML = "";
@@ -38,12 +104,29 @@ function renderGroup(key, choices, selected) {
 }
 
 async function load() {
-  const [options, settings, ports, audioInputs] = await Promise.all([
+  const [options, settings, ports, audioInputs, apps] = await Promise.all([
     invoke("get_options"),
     invoke("get_settings"),
     invoke("list_midi_ports"),
     invoke("list_audio_inputs"),
+    invoke("list_apps"),
   ]);
+  for (const r of document.querySelectorAll("input[name=mode]")) r.checked = r.value === settings.mode;
+  syncMode();
+  chordLabels = Object.fromEntries(options.trigger_chords.map((c) => [c.id, c.label]));
+  appNames = Object.fromEntries(apps.map((a) => [a.path, a.name]));
+  const trigger = $("trigger");
+  trigger.innerHTML = "";
+  for (const c of options.trigger_chords) trigger.add(new Option(c.label, c.id));
+  trigger.add(new Option("Pad, knob or button…", CONTROL));
+  const app = $("app");
+  app.innerHTML = "";
+  for (const a of apps) app.add(new Option(a.name, a.path));
+  mappings = settings.mappings;
+  learned = null;
+  setLearning(false);
+  syncTrigger();
+  renderMappings();
   for (const key of Object.keys(GROUPS)) renderGroup(key, options[key], settings[key]);
   $("minutes").value = settings.minutes;
   $("sound").checked = settings.sound;
@@ -79,6 +162,8 @@ $("form").onsubmit = async (e) => {
   e.preventDefault();
   const checked = (key) => [...$(key).querySelectorAll("input:checked")].map((i) => i.value);
   const settings = {
+    mode: document.querySelector("input[name=mode]:checked").value,
+    mappings,
     chords: checked("chords"),
     intervals: checked("intervals"),
     scales: checked("scales"),
@@ -97,13 +182,39 @@ $("form").onsubmit = async (e) => {
   };
   try {
     await invoke("save_settings", { settings });
-    setStatus("Saved. New challenge loaded.");
+    setStatus(settings.mode === "quiz" ? "Saved. New challenge loaded." : "Saved.");
   } catch (err) {
     setStatus(String(err), true);
   }
 };
 
 $("audio_enabled").onchange = syncAudio;
+document.querySelectorAll("input[name=mode]").forEach((r) => (r.onchange = syncMode));
+$("trigger").onchange = syncTrigger;
+$("learn").onclick = () => setLearning(!$("learn").classList.contains("listening"));
+listen("learned", (e) => {
+  learned = e.payload.control;
+  setLearning(false);
+});
+$("add").onclick = () => {
+  let trigger;
+  if ($("trigger").value === CONTROL) {
+    if (!learned) return setStatus("Click Learn and touch a pad, knob or button first.", true);
+    trigger = { type: "control", control: learned };
+  } else {
+    trigger = { type: "chord", chord: $("trigger").value };
+  }
+  const path = $("app").value;
+  if (!path) return setStatus("Pick an app.", true);
+  if (mappings.some((m) => sameTrigger(m.trigger, trigger) && m.action.path === path)) {
+    return setStatus("That one's already there.", true);
+  }
+  mappings.push({ trigger, action: { type: "open_app", path } });
+  learned = null;
+  setLearning(false);
+  renderMappings();
+  setStatus("Not saved yet.");
+};
 
 function renderUpdate(u) {
   const text = {

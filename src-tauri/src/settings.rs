@@ -1,3 +1,4 @@
+use crate::actions::Mapping;
 use crate::theory::{ArpeggioOrder, ChordType, Interval, Kind, ScaleType, ARPEGGIO_CHORDS};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -30,9 +31,23 @@ impl FretMode {
     }
 }
 
+/// What MusicBar does with what you play: one at a time.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Mode {
+    /// Timed challenges, with the alarm when time runs out.
+    Quiz,
+    /// Chords and controller pads/knobs/buttons run actions.
+    #[default]
+    Action,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    pub mode: Mode,
+    /// Action mode's triggers, in the order shown.
+    pub mappings: Vec<Mapping>,
     pub chords: Vec<ChordType>,
     pub intervals: Vec<Interval>,
     pub scales: Vec<ScaleType>,
@@ -59,6 +74,8 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            mode: Mode::Action,
+            mappings: vec![],
             chords: ChordType::ALL.to_vec(),
             intervals: Interval::ALL.to_vec(),
             scales: ScaleType::ALL.to_vec(),
@@ -95,11 +112,21 @@ impl Settings {
         out
     }
 
+    pub fn quiz(&self) -> bool {
+        self.mode == Mode::Quiz
+    }
+
     pub fn duration(&self) -> Duration {
         Duration::from_secs(self.minutes.max(1) as u64 * 60)
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if !(1..=240).contains(&self.minutes) {
+            return Err("Timer must be between 1 and 240 minutes.".into());
+        }
+        if self.mode == Mode::Action {
+            return Ok(());
+        }
         if self.kinds().is_empty() {
             return Err("Pick at least one chord, interval, scale or arpeggio.".into());
         }
@@ -111,9 +138,6 @@ impl Settings {
         }
         if self.fret_modes == [FretMode::Shape] && self.shape_chords().is_empty() {
             return Err("Name the shape needs at least one chord or arpeggio.".into());
-        }
-        if !(1..=240).contains(&self.minutes) {
-            return Err("Timer must be between 1 and 240 minutes.".into());
         }
         Ok(())
     }

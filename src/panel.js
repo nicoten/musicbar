@@ -17,6 +17,9 @@ onState((s) => {
   $("held").textContent = s.held.length ? `Playing: ${s.held.join(" ")}` : "";
   $("pause").textContent = s.user_paused ? "Resume" : "Pause";
   $("skip").disabled = s.overdue;
+  // Action mode has no challenge and no timer to pause or skip.
+  for (const id of ["pause", "skip"]) $(id).hidden = !s.quiz;
+  $("progress").parentElement.hidden = !s.quiz;
   renderBoard(s);
 });
 

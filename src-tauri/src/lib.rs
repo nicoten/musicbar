@@ -1,3 +1,4 @@
+mod actions;
 mod audio;
 mod calls;
 mod engine;
@@ -10,7 +11,8 @@ mod theory;
 mod updates;
 
 use engine::{Drill, Engine};
-use midi::NoteEvent;
+use actions::{Control, Trigger};
+use midi::{MidiEvent, NoteEvent};
 use pitch::AudioEvent;
 use serde::Serialize;
 use settings::Settings;
@@ -27,11 +29,19 @@ const NAG_EVERY: Duration = Duration::from_secs(3);
 const CALL_POLL: Duration = Duration::from_secs(2);
 const WARN_SECS: u64 = 10;
 const WARN_SOUND: &str = "/System/Library/Sounds/Tink.aiff";
+/// How long a fired action stays up in the panel.
+const ACTION_LINGER: Duration = Duration::from_secs(4);
 /// Config dir name from before the app was renamed to MusicBar.
 const OLD_CONFIG_DIR: &str = "com.nicotejera.musicblock";
 
 struct Shared {
     engine: Mutex<Engine>,
+    /// Action mode's view of what's played.
+    listener: Mutex<actions::Listener>,
+    /// Set by Learn in Settings: the next pad/knob/button goes there instead of to a trigger.
+    learning: Mutex<bool>,
+    /// What last fired, e.g. "maj7 → Open Spotify", and when.
+    last_action: Mutex<Option<(String, Instant)>>,
     settings_path: PathBuf,
     panel_hidden_at: Mutex<Option<Instant>>,
 }
@@ -40,10 +50,22 @@ impl Shared {
     fn engine(&self) -> MutexGuard<'_, Engine> {
         self.engine.lock().unwrap_or_else(|e| e.into_inner())
     }
+
+    fn listener(&self) -> MutexGuard<'_, actions::Listener> {
+        self.listener.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn snapshot(&self, now: Instant) -> Snapshot {
+        let action = self.last_action.lock().unwrap().clone();
+        let action = action.filter(|(_, at)| now.saturating_duration_since(*at) < ACTION_LINGER).map(|(a, _)| a);
+        snapshot(&self.engine(), action, now)
+    }
 }
 
 #[derive(Serialize, Clone, PartialEq)]
 struct Snapshot {
+    /// Quiz mode (challenges and the timer); otherwise action mode.
+    quiz: bool,
     category: &'static str,
     short: String,
     long: String,
@@ -84,8 +106,35 @@ struct Dot {
     root: bool,
 }
 
-fn snapshot(e: &Engine, now: Instant) -> Snapshot {
+/// `action` is what action mode fired a moment ago, if anything.
+fn snapshot(e: &Engine, action: Option<String>, now: Instant) -> Snapshot {
+    let snap = quiz_snapshot(e, now);
+    if e.settings.quiz() {
+        return snap;
+    }
+    // Action mode: no challenge, no timer, nothing for the fretboard to mark.
+    let short = action.unwrap_or_else(|| "Play a chord or hit a pad".into());
     Snapshot {
+        quiz: false,
+        category: "Action mode",
+        long: short.clone(),
+        short,
+        remaining_secs: 0,
+        overdue: false,
+        solved: false,
+        progress: vec![],
+        mode: "free",
+        window: None,
+        dots: vec![],
+        shape_chords: vec![],
+        misses: 0,
+        ..snap
+    }
+}
+
+fn quiz_snapshot(e: &Engine, now: Instant) -> Snapshot {
+    Snapshot {
+        quiz: true,
         category: e.category(),
         short: e.short(),
         long: e.long(),
@@ -139,9 +188,11 @@ fn chord_label(c: theory::ChordType) -> &'static str {
 fn tray_title(s: &Snapshot) -> String {
     if s.in_call {
         // Menu bar is visible when screen sharing: don't advertise anything.
-        return "♪ ⏸".to_string();
+        return if s.quiz { "♪ ⏸" } else { "♪" }.to_string();
     }
-    let quiz = if s.overdue {
+    let quiz = if !s.quiz {
+        "♪".to_string()
+    } else if s.overdue {
         format!("⚠ {}", s.short)
     } else if s.paused {
         format!("⏸ {}", s.short)
@@ -156,7 +207,7 @@ fn tray_title(s: &Snapshot) -> String {
 
 /// Pushes the current state to the tray title and all windows.
 fn publish(app: &AppHandle) -> Snapshot {
-    let snap = snapshot(&app.state::<Shared>().inner().engine(), Instant::now());
+    let snap = app.state::<Shared>().snapshot(Instant::now());
     if let Some(tray) = app.tray_by_id("main") {
         let _ = tray.set_title(Some(tray_title(&snap)));
     }
@@ -200,7 +251,7 @@ fn spawn_ticker(app: AppHandle) {
                 let mut e = app.state::<Shared>().inner().engine();
                 (e.tick(Instant::now()), e.settings.sound)
             };
-            let snap = snapshot(&app.state::<Shared>().inner().engine(), Instant::now());
+            let snap = app.state::<Shared>().snapshot(Instant::now());
             if last_snap.as_ref() != Some(&snap) {
                 // Countdown beep once per second over the last few seconds.
                 let new_second = last_snap.as_ref().is_none_or(|l| l.remaining_secs != snap.remaining_secs);
@@ -282,6 +333,95 @@ fn on_note(app: &AppHandle, ev: NoteEvent) {
     publish(app);
 }
 
+/// Runs every action mapped to `trigger`.
+fn fire(app: &AppHandle, trigger: Trigger) {
+    let shared = app.state::<Shared>();
+    let mappings = shared.engine().settings.mappings.clone();
+    let what = match trigger {
+        Trigger::Chord { chord } => chord_label(chord).to_string(),
+        Trigger::Control { control } => control.label(),
+    };
+    let mut fired = vec![];
+    for m in mappings.iter().filter(|m| m.trigger == trigger) {
+        m.action.run();
+        fired.push(m.action.label());
+    }
+    if !fired.is_empty() {
+        *shared.last_action.lock().unwrap() = Some((format!("{what} → {}", fired.join(", ")), Instant::now()));
+        publish(app);
+    }
+}
+
+/// Hands a pad/knob/button to Learn if it's waiting for one. Returns true if it took it.
+fn learn(app: &AppHandle, control: Control) -> bool {
+    let shared = app.state::<Shared>();
+    let mut learning = shared.learning.lock().unwrap();
+    if !*learning {
+        return false;
+    }
+    *learning = false;
+    let _ = app.emit_to("settings", "learned", serde_json::json!({ "control": control, "label": control.label() }));
+    true
+}
+
+fn on_midi(app: &AppHandle, ev: MidiEvent) {
+    let shared = app.state::<Shared>();
+    let (quiz, pads) = {
+        let s = &shared.engine().settings;
+        let pads: Vec<Control> = s
+            .mappings
+            .iter()
+            .filter_map(|m| match m.trigger {
+                Trigger::Control { control: c @ Control::Note { .. } } => Some(c),
+                _ => None,
+            })
+            .collect();
+        (s.quiz(), pads)
+    };
+    match ev {
+        MidiEvent::Control { control, value } => {
+            if !learn(app, control) && !quiz && shared.listener().control(control, value) {
+                fire(app, Trigger::Control { control });
+            }
+        }
+        MidiEvent::Note { channel, event } => {
+            let note = match event {
+                NoteEvent::On(n) | NoteEvent::Off(n) => n,
+            };
+            let pad = Control::Note { channel, note };
+            if let NoteEvent::On(_) = event {
+                if learn(app, pad) {
+                    return;
+                }
+            }
+            // A note mapped as a pad only ever fires its trigger, never counts as a played note.
+            if !quiz && pads.contains(&pad) {
+                if let NoteEvent::On(_) = event {
+                    fire(app, Trigger::Control { control: pad });
+                }
+                return;
+            }
+            if !quiz {
+                match event {
+                    NoteEvent::On(n) => {
+                        let generation = shared.listener().note_on(n);
+                        let app = app.clone();
+                        thread::spawn(move || {
+                            thread::sleep(actions::SETTLE);
+                            let chord = app.state::<Shared>().listener().settled(generation);
+                            if let Some(chord) = chord {
+                                fire(&app, Trigger::Chord { chord });
+                            }
+                        });
+                    }
+                    NoteEvent::Off(n) => shared.listener().note_off(n),
+                }
+            }
+            on_note(app, event);
+        }
+    }
+}
+
 fn on_audio(app: &AppHandle, ev: AudioEvent) {
     match ev {
         // Don't take what MusicBar itself is playing (heard through the mic) for you playing.
@@ -290,6 +430,11 @@ fn on_audio(app: &AppHandle, ev: AudioEvent) {
             let _ = app.emit_to("panel", "tuner", hz);
         }
         AudioEvent::Note(n) => on_note(app, n),
+        AudioEvent::Chord(pcs) if !app.state::<Shared>().engine().settings.quiz() => {
+            if let Some(chord) = actions::chord_type(&pcs) {
+                fire(app, Trigger::Chord { chord });
+            }
+        }
         AudioEvent::Chord(pcs) => {
             let mut e = app.state::<Shared>().inner().engine();
             if e.chord_heard(&pcs, Instant::now()) {
@@ -363,6 +508,8 @@ struct Options {
     arpeggios: Vec<Choice>,
     arpeggio_orders: Vec<Choice>,
     fret_modes: Vec<Choice>,
+    /// Chord types to trigger actions with.
+    trigger_chords: Vec<Choice>,
 }
 
 fn choice<T: Serialize>(id: T, label: String) -> Choice {
@@ -371,7 +518,7 @@ fn choice<T: Serialize>(id: T, label: String) -> Choice {
 
 #[tauri::command]
 fn get_state(app: AppHandle) -> Snapshot {
-    snapshot(&app.state::<Shared>().inner().engine(), Instant::now())
+    app.state::<Shared>().snapshot(Instant::now())
 }
 
 #[tauri::command]
@@ -446,6 +593,7 @@ fn get_options() -> Options {
         arpeggios: ARPEGGIO_CHORDS.iter().map(|&c| choice(c, format!("C{} ({})", c.suffix(), c.name()))).collect(),
         arpeggio_orders: ArpeggioOrder::all().into_iter().map(|o| choice(o, o.to_string())).collect(),
         fret_modes: settings::FretMode::ALL.iter().map(|&m| choice(m, m.name().to_string())).collect(),
+        trigger_chords: ChordType::ALL.iter().map(|&c| choice(c, format!("Any {} ({})", c.name(), chord_label(c)))).collect(),
     }
 }
 
@@ -456,6 +604,7 @@ fn save_settings(app: AppHandle, settings: Settings) -> Result<(), String> {
     settings.save(&shared.settings_path)?;
     apply_launch_at_login(&app, settings.launch_at_login);
     shared.engine().apply_settings(settings, Instant::now());
+    shared.listener().clear();
     hide_alarm(&app);
     publish(&app);
     Ok(())
@@ -464,6 +613,28 @@ fn save_settings(app: AppHandle, settings: Settings) -> Result<(), String> {
 #[tauri::command]
 fn list_midi_ports() -> Vec<String> {
     midi::list_ports()
+}
+
+#[derive(Serialize)]
+struct App {
+    path: String,
+    name: String,
+}
+
+#[tauri::command]
+fn list_apps() -> Vec<App> {
+    actions::list_apps().into_iter().map(|path| App { name: actions::app_name(&path), path }).collect()
+}
+
+/// Learn: the next pad, knob or button pressed is sent to Settings as a `learned` event.
+#[tauri::command]
+fn start_learning(app: AppHandle) {
+    *app.state::<Shared>().learning.lock().unwrap() = true;
+}
+
+#[tauri::command]
+fn stop_learning(app: AppHandle) {
+    *app.state::<Shared>().learning.lock().unwrap() = false;
 }
 
 #[tauri::command]
@@ -513,8 +684,15 @@ pub fn run() {
             let settings = Settings::load(&settings_path);
             apply_launch_at_login(app.handle(), settings.launch_at_login);
             let engine = Engine::new(settings, Instant::now());
-            let title = tray_title(&snapshot(&engine, Instant::now()));
-            app.manage(Shared { engine: Mutex::new(engine), settings_path, panel_hidden_at: Mutex::new(None) });
+            let title = tray_title(&snapshot(&engine, None, Instant::now()));
+            app.manage(Shared {
+                engine: Mutex::new(engine),
+                listener: Mutex::new(actions::Listener::default()),
+                learning: Mutex::new(false),
+                last_action: Mutex::new(None),
+                settings_path,
+                panel_hidden_at: Mutex::new(None),
+            });
 
             TrayIconBuilder::with_id("main")
                 .title(title)
@@ -534,7 +712,7 @@ pub fn run() {
                 },
                 {
                     let handle = handle.clone();
-                    move |ev| on_note(&handle, ev)
+                    move |ev| on_midi(&handle, ev)
                 },
             );
             audio::spawn(
@@ -575,6 +753,9 @@ pub fn run() {
             save_settings,
             list_midi_ports,
             list_audio_inputs,
+            list_apps,
+            start_learning,
+            stop_learning,
             get_update_info,
             check_for_updates,
             open_settings,

@@ -1,3 +1,4 @@
+use crate::actions::Control;
 use midir::{Ignore, MidiInput, MidiInputConnection};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -10,10 +11,26 @@ pub enum NoteEvent {
     Off(u8),
 }
 
-fn parse(msg: &[u8]) -> Option<NoteEvent> {
+/// A message from a MIDI input: a note (with its 0-based channel, so a pad can be told apart), or a
+/// knob/button/program change with its value.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MidiEvent {
+    Note { channel: u8, event: NoteEvent },
+    Control { control: Control, value: u8 },
+}
+
+fn parse(msg: &[u8]) -> Option<MidiEvent> {
+    let channel = *msg.first()? & 0x0F;
+    let note = |event| Some(MidiEvent::Note { channel, event });
     match *msg {
-        [status, note, vel, ..] if status & 0xF0 == 0x90 && vel > 0 => Some(NoteEvent::On(note)),
-        [status, note, _, ..] if matches!(status & 0xF0, 0x80 | 0x90) => Some(NoteEvent::Off(note)),
+        [status, n, vel, ..] if status & 0xF0 == 0x90 && vel > 0 => note(NoteEvent::On(n)),
+        [status, n, _, ..] if matches!(status & 0xF0, 0x80 | 0x90) => note(NoteEvent::Off(n)),
+        [status, number, value, ..] if status & 0xF0 == 0xB0 => {
+            Some(MidiEvent::Control { control: Control::Cc { channel, number }, value })
+        }
+        [status, number, ..] if status & 0xF0 == 0xC0 => {
+            Some(MidiEvent::Control { control: Control::Program { channel, number }, value: 127 })
+        }
         _ => None,
     }
 }
@@ -23,7 +40,7 @@ pub fn list_ports() -> Vec<String> {
     input.ports().iter().filter_map(|p| input.port_name(p).ok()).collect()
 }
 
-fn connect(name: &str, on_event: Arc<dyn Fn(NoteEvent) + Send + Sync>) -> Option<MidiInputConnection<()>> {
+fn connect(name: &str, on_event: Arc<dyn Fn(MidiEvent) + Send + Sync>) -> Option<MidiInputConnection<()>> {
     let mut input = MidiInput::new("MusicBar").ok()?;
     input.ignore(Ignore::All);
     let port = input.ports().into_iter().find(|p| input.port_name(p).ok().as_deref() == Some(name))?;
@@ -40,9 +57,9 @@ fn connect(name: &str, on_event: Arc<dyn Fn(NoteEvent) + Send + Sync>) -> Option
 /// `wanted` returns the configured port name, or `None` for all ports.
 pub fn spawn(
     wanted: impl Fn() -> Option<String> + Send + 'static,
-    on_event: impl Fn(NoteEvent) + Send + Sync + 'static,
+    on_event: impl Fn(MidiEvent) + Send + Sync + 'static,
 ) {
-    let on_event: Arc<dyn Fn(NoteEvent) + Send + Sync> = Arc::new(on_event);
+    let on_event: Arc<dyn Fn(MidiEvent) + Send + Sync> = Arc::new(on_event);
     thread::spawn(move || {
         let mut conns: HashMap<String, MidiInputConnection<()>> = HashMap::new();
         loop {
@@ -70,9 +87,22 @@ mod tests {
 
     #[test]
     fn parses_note_messages() {
-        assert!(matches!(parse(&[0x90, 60, 100]), Some(NoteEvent::On(60))));
-        assert!(matches!(parse(&[0x93, 60, 0]), Some(NoteEvent::Off(60))));
-        assert!(matches!(parse(&[0x80, 60, 64]), Some(NoteEvent::Off(60))));
-        assert!(parse(&[0xB0, 64, 127]).is_none());
+        let note = |channel, event| Some(MidiEvent::Note { channel, event });
+        assert_eq!(parse(&[0x90, 60, 100]), note(0, NoteEvent::On(60)));
+        assert_eq!(parse(&[0x93, 60, 0]), note(3, NoteEvent::Off(60)));
+        assert_eq!(parse(&[0x89, 36, 64]), note(9, NoteEvent::Off(36)));
+        assert_eq!(parse(&[0xE0, 0, 64]), None, "pitch bend");
+    }
+
+    #[test]
+    fn parses_controls() {
+        assert_eq!(
+            parse(&[0xB1, 21, 127]),
+            Some(MidiEvent::Control { control: Control::Cc { channel: 1, number: 21 }, value: 127 })
+        );
+        assert_eq!(
+            parse(&[0xC0, 5]),
+            Some(MidiEvent::Control { control: Control::Program { channel: 0, number: 5 }, value: 127 })
+        );
     }
 }

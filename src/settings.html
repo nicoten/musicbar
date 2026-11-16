@@ -8,16 +8,41 @@
   </head>
   <body>
     <form class="settings" id="form">
-      <h1>What should I quiz you on?</h1>
-      <fieldset id="chords"></fieldset>
-      <fieldset id="intervals"></fieldset>
-      <fieldset id="scales"></fieldset>
-      <fieldset id="arpeggios"></fieldset>
-      <fieldset id="arpeggio_orders"></fieldset>
-      <fieldset id="fret_modes"></fieldset>
+      <h1>MusicBar settings</h1>
+      <fieldset>
+        <legend>Mode</legend>
+        <div class="modes">
+          <label><input type="radio" name="mode" value="action" /> <b>Action</b>: chords and pads run things on your Mac</label>
+          <label><input type="radio" name="mode" value="quiz" /> <b>Quiz</b>: timed challenges, with the alarm</label>
+        </div>
+      </fieldset>
+      <div id="action-settings">
+        <fieldset>
+          <legend>Actions</legend>
+          <ul class="mappings" id="mappings"></ul>
+          <div class="add-mapping">
+            <select id="trigger"></select>
+            <button type="button" id="learn" hidden>Learn</button>
+            <span class="arrow">→</span>
+            <select id="app"></select>
+            <button type="button" id="add">Add</button>
+          </div>
+          <p class="hint">A chord trigger fires for that chord type in any key, voicing or inversion, from MIDI or a
+            strummed guitar. For a pad, knob or button, click Learn and touch it. Keys never count.</p>
+        </fieldset>
+      </div>
+      <div id="quiz-settings">
+        <h2>What should I quiz you on?</h2>
+        <fieldset id="chords"></fieldset>
+        <fieldset id="intervals"></fieldset>
+        <fieldset id="scales"></fieldset>
+        <fieldset id="arpeggios"></fieldset>
+        <fieldset id="arpeggio_orders"></fieldset>
+        <fieldset id="fret_modes"></fieldset>
+      </div>
       <fieldset>
         <legend>General</legend>
-        <label class="field">Time per challenge (minutes) <input type="number" id="minutes" min="1" max="240" required /></label>
+        <label class="field quiz-only">Time per challenge (minutes) <input type="number" id="minutes" min="1" max="240" required /></label>
         <label class="field">MIDI input <select id="midi"></select></label>
         <label class="field">Listen to audio (guitar or mic) <input type="checkbox" id="audio_enabled" /></label>
         <label class="field">Audio input <select id="audio_device"></select></label>
