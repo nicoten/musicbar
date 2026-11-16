@@ -17,7 +17,7 @@ app in /Applications, /System/Applications or ~/Applications).
   an F♯maj7 in second inversion, and so on. They work from MIDI or a strummed guitar (audio input). The notes
   have to hold still for 100 ms, so Cmaj7 doesn't first fire "major" on its way there. Each chord fires once,
   and nothing else fires until you let go of every note.
-- **Controller triggers** come from pads, knobs and buttons, never from keys. Pick "Pad, knob or button…",
+- **Controller triggers** come from pads, knobs and buttons on any connected MIDI device (the MIDI input setting only picks which keyboard plays chords), never from keys. Pick "Pad, knob or button…",
   click **Learn** and touch the control. Buttons fire when pressed. Knobs fire when turned past halfway, and
   fire again only after going back below it. Pads that send notes are recorded with their channel, and then
   only fire their trigger and never count toward a chord.

@@ -40,34 +40,36 @@ pub fn list_ports() -> Vec<String> {
     input.ports().iter().filter_map(|p| input.port_name(p).ok()).collect()
 }
 
-fn connect(name: &str, on_event: Arc<dyn Fn(MidiEvent) + Send + Sync>) -> Option<MidiInputConnection<()>> {
+/// Whether keys played on `port` count as notes (chords, quizzes), given the MIDI input picked in
+/// Settings (`None` = all inputs). Pads, knobs and buttons count from every port regardless.
+pub fn plays_notes(picked: Option<&str>, port: &str) -> bool {
+    picked.is_none_or(|p| p == port)
+}
+
+type Handler = Arc<dyn Fn(&str, MidiEvent) + Send + Sync>;
+
+fn connect(name: &str, on_event: Handler) -> Option<MidiInputConnection<()>> {
+    let port_name = name.to_string();
     let mut input = MidiInput::new("MusicBar").ok()?;
     input.ignore(Ignore::All);
     let port = input.ports().into_iter().find(|p| input.port_name(p).ok().as_deref() == Some(name))?;
     input
         .connect(&port, "MusicBar-in", move |_, msg, _| {
             if let Some(ev) = parse(msg) {
-                on_event(ev);
+                on_event(&port_name, ev);
             }
         }, ())
         .ok()
 }
 
-/// Keeps connections in sync with the available ports (handles hot-plugging).
-/// `wanted` returns the configured port name, or `None` for all ports.
-pub fn spawn(
-    wanted: impl Fn() -> Option<String> + Send + 'static,
-    on_event: impl Fn(MidiEvent) + Send + Sync + 'static,
-) {
-    let on_event: Arc<dyn Fn(MidiEvent) + Send + Sync> = Arc::new(on_event);
+/// Listens to every MIDI input, keeping connections in sync with the ports (handles hot-plugging).
+/// Each event comes with the name of the port it arrived on; see `plays_notes`.
+pub fn spawn(on_event: impl Fn(&str, MidiEvent) + Send + Sync + 'static) {
+    let on_event: Handler = Arc::new(on_event);
     thread::spawn(move || {
         let mut conns: HashMap<String, MidiInputConnection<()>> = HashMap::new();
         loop {
-            let wanted = wanted();
-            let targets: Vec<String> = list_ports()
-                .into_iter()
-                .filter(|name| wanted.as_ref().is_none_or(|w| w == name))
-                .collect();
+            let targets = list_ports();
             conns.retain(|name, _| targets.contains(name));
             for name in targets {
                 if !conns.contains_key(&name) {
@@ -92,6 +94,13 @@ mod tests {
         assert_eq!(parse(&[0x93, 60, 0]), note(3, NoteEvent::Off(60)));
         assert_eq!(parse(&[0x89, 36, 64]), note(9, NoteEvent::Off(36)));
         assert_eq!(parse(&[0xE0, 0, 64]), None, "pitch bend");
+    }
+
+    #[test]
+    fn only_the_picked_input_plays_notes() {
+        assert!(plays_notes(None, "MPK mini IV MIDI Port"));
+        assert!(plays_notes(Some("MiniFuse 4"), "MiniFuse 4"));
+        assert!(!plays_notes(Some("MiniFuse 4"), "MPK mini IV MIDI Port"));
     }
 
     #[test]

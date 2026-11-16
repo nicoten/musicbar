@@ -364,9 +364,10 @@ fn learn(app: &AppHandle, control: Control) -> bool {
     true
 }
 
-fn on_midi(app: &AppHandle, ev: MidiEvent) {
+/// Pads, knobs and buttons count from any MIDI input; keys only from the one picked in Settings.
+fn on_midi(app: &AppHandle, port: &str, ev: MidiEvent) {
     let shared = app.state::<Shared>();
-    let (quiz, pads) = {
+    let (quiz, pads, keys) = {
         let s = &shared.engine().settings;
         let pads: Vec<Control> = s
             .mappings
@@ -376,7 +377,7 @@ fn on_midi(app: &AppHandle, ev: MidiEvent) {
                 _ => None,
             })
             .collect();
-        (s.quiz(), pads)
+        (s.quiz(), pads, midi::plays_notes(s.midi_port.as_deref(), port))
     };
     match ev {
         MidiEvent::Control { control, value } => {
@@ -399,6 +400,9 @@ fn on_midi(app: &AppHandle, ev: MidiEvent) {
                 if let NoteEvent::On(_) = event {
                     fire(app, Trigger::Control { control: pad });
                 }
+                return;
+            }
+            if !keys {
                 return;
             }
             if !quiz {
@@ -705,16 +709,10 @@ pub fn run() {
                 .build(app)?;
 
             let handle = app.handle().clone();
-            midi::spawn(
-                {
-                    let handle = handle.clone();
-                    move || handle.state::<Shared>().inner().engine().settings.midi_port.clone()
-                },
-                {
-                    let handle = handle.clone();
-                    move |ev| on_midi(&handle, ev)
-                },
-            );
+            midi::spawn({
+                let handle = handle.clone();
+                move |port, ev| on_midi(&handle, port, ev)
+            });
             audio::spawn(
                 {
                     let handle = handle.clone();
